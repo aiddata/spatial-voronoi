@@ -35,7 +35,7 @@ def aggregate_lv1_by_location(input_address, setting_csv_address = 'default', fi
                 print 'This input setting file is not wrong. It should be a .csv file'
         except:
             print 'The setting file has an incorrect address or incorrect format'
-    input_df = pd.read_csv(input_address, encoding= 'utf-8')
+    # input_df = pd.read_csv(input_address, encoding= 'utf-8')
 
     # this function is not debugged or test fully yet
     # filter the dataframe with filter_dict
@@ -49,7 +49,7 @@ def aggregate_lv1_by_location(input_address, setting_csv_address = 'default', fi
         title_field_additional.append(str(i))
     filtered_subset = filtered_subset.loc[:, title_field]
 
-    comparing_index = 0
+    comparing_index = filtered_subset.head(1).index[0]
     count_total = len(filtered_subset)
 
     # since repeatly use pandas.append() to add a row is a performance hit
@@ -140,9 +140,9 @@ return: filtered_subset
 
 
 sample of filter_dict:      #lat and long will be used without any statement
-{'sector': [311,310,998], 'donor': ['USA','ESP']}
+{'sector': [311,310,998], 'donors_iso3': ['USA']}
 {'aaa':['USA']}  Even only one word is search for field 'aaa', make the word in a list
-{'aaa':'USA'} The value can be only a string value
+{'donors_iso3':'USA'} The value can be only a string value
 '''
 def filter_dataframe(input_dfadd, filter_dict):
 
@@ -158,33 +158,15 @@ def filter_dataframe(input_dfadd, filter_dict):
 
     # loop every key and value to complete boolean value
     for i in range(len(list_keys)):
-        # if a couple keywords are searching as words in one key (eg. searching 311, 310, 998 from sector)
-        if type(list_values[i]) is list :
-            # if a list as a value, use logical OR to combine all boolean
-            for ii in list_values[i]:
-                is_condition = subset_overlapping[list_keys[i]] == ii
-                if condition_key is None:
-                    condition_key = is_condition
-                else:
-                    new_condition = condition_key | is_condition
-                    condition_key = new_condition
-            # use logical AND to combine boolean to boolean of other values
-            if condition_all is None:
-                condition_all = condition_key
-            else:
-                condition_all = condition_all & condition_key
-            condition_key = None
-        # if only one word or value is searched ( 'donor' = 'USA', for example)
-        elif type(list_values[i]) is str:
-            if condition_all is None:
-                condition_all = subset_overlapping[list_keys[i]] == list_values[i]
-            else:
-                is_condition = subset_overlapping[list_keys[i]] == list_values[i]
-                condition_all = condition_all & is_condition
-        elif len(list_values[i]) == 0:
-            continue
+        key = list_keys[i]
+        value = list_values[i]
+        condition_key = get_condition_key(value,key,input_dfadd)
+        if condition_all is None:
+            condition_all = condition_key
         else:
-            continue
+            # even conditions in the same key will work together. Logical OR
+            # conditions of different key only work if they have somethin in common. Logical AND.
+            condition_all = condition_all & condition_key
 
     # dataframe that satisfy all conditions
     filtered_subset = subset_overlapping[condition_all]
@@ -198,7 +180,8 @@ def filter_dataframe(input_dfadd, filter_dict):
 '''
 function 1.2.1 get_condition_key()
 description: return a proper condition_key based on the type of parameter.
-input: value_filter( a value a filter is dealing with), key_filter(the key a filter is looking at), input_dfadd(an input address of dataframe-like file (e.g. CSV)
+input: value_filter( a value a filter is dealing with), key_filter(the key a filter is looking at), input_dfadd(an input
+    address of dataframe-like file (e.g. CSV))
 output: condition_key (a boolean series / array)
 '''
 def get_condition_key(value_filter, key_filter, input_dfadd):
@@ -206,6 +189,7 @@ def get_condition_key(value_filter, key_filter, input_dfadd):
     input_df = pd.read_csv(input_dfadd, encoding= 'utf-8')
     condition_key = None
 
+    # get condition_key by the type of value
     if type(value_filter) is str:
         if condition_key is None:
             condition_key = input_df[key_filter].str.contains(value_filter, na=False)
@@ -225,10 +209,18 @@ def get_condition_key(value_filter, key_filter, input_dfadd):
             new_boolean = input_df[key_filter] == value_filter
             condition_key = condition_key | new_boolean
     elif type(value_filter) is list:
-        
+        # this algorithm make all element in a list equal to each other.
+        # Even elements in another list wrapped within this list
+        stack_condition = None
+        for counter, item in enumerate(value_filter):
+            new_condition = get_condition_key(item, key_filter, input_dfadd)
+            if counter == 0:
+                stack_condition = new_condition
+            else:
+                stack_condition = stack_condition | new_condition
+        condition_key = stack_condition
 
-
-    return
+    return condition_key
 
 '''
 function 1.3: combineTwoList()
@@ -295,7 +287,7 @@ def main():
     dict_filter = {}
     dict_filter['donors_iso3'] = 'USA'
     '''testing. Shoule be deleted when dict_filter is loaded from outside file'''
-    clean_df = aggregate_lv1_by_location(input_address, filter_dict=dict_filter)
+    clean_df = aggregate_lv1_by_location(input_address,filter_dict=dict_filter)
 
     # get the numpy array of latitude and longitude
     att_lon_lat = clean_df.loc[:, ['longitude', 'latitude']].values
@@ -336,7 +328,7 @@ def main():
 
     # use WGS 84 , longlat , the kind of global use of Coordinate Reference System
     crs = from_epsg(4326)
-
+    # the input shapefile of boundary
     boundary_address = '/Users/EugeneWang/Desktop/AidData/project1/TimorLesteAIMS_GeocodedResearchRelease_Level1_v1.4.1/TLS_adm_shp/TLS_adm0.shp'
 
     '''
@@ -351,7 +343,7 @@ def main():
         for record_boundary in layer_boundary.filter():
             polygon_boundary = shape(record_boundary['geometry'])
             # LOOP FILTERED TABLE TO GET TITLE AS KEY AND VALUE AS VALUE IN DICT
-            with fiona.collection('TEST1.shp','w','ESRI Shapefile', outSchema,crs) as output:
+            with fiona.collection('TEST_all.shp','w','ESRI Shapefile', outSchema,crs) as output:
                 for polygon in areas:
                     attribute_each_record = {}
                     # see if country boundary intersect with this voronoi polygon
@@ -360,7 +352,7 @@ def main():
                         intersection_polygon = polygon.intersection(polygon_boundary)
 
                         for point in list_points:
-                            if point.within(polygon):
+                            if point.within(intersection_polygon):
                                 is_same_lat = clean_df.latitude == point.y
                                 is_same_lon = clean_df.longitude == point.x
 
