@@ -191,20 +191,23 @@ def get_condition_key(value_filter, key_filter, input_dfadd):
 
     # get condition_key by the type of value
     if type(value_filter) is str:
+        print 'processing filter: field \'%s\' contain %s' %(key_filter, value_filter)
         if condition_key is None:
             condition_key = input_df[key_filter].str.contains(value_filter, na=False)
         else:
             new_boolean = input_df[key_filter].str.contains(value_filter, na= False)
             condition_key = condition_key | new_boolean
     elif type(value_filter) is int:
+        print 'processing filter: field \'%s\' contain %d' %(key_filter, value_filter)
         if condition_key is None:
-            condition_key = input_df[key_filter] == value_filter
+            condition_key = input_df[key_filter].str.contains(str(value_filter), na=False)
         else:
             new_boolean = input_df[key_filter] == value_filter
             condition_key = condition_key | new_boolean
     elif type(value_filter) is float:
+        print 'processing filter: \'%s\' contain %d' % (key_filter, value_filter)
         if condition_key is None:
-            condition_key = input_df[key_filter] == value_filter
+            condition_key = input_df[key_filter] == input_df[key_filter].str.contains(str(value_filter), na=False)
         else:
             new_boolean = input_df[key_filter] == value_filter
             condition_key = condition_key | new_boolean
@@ -285,7 +288,7 @@ def main():
 
     '''testing code for dict_filter'''
     dict_filter = {}
-    dict_filter['donors_iso3'] = 'USA'
+    dict_filter['donors_iso3'] = ['USA', 'SWE']
     '''testing. Shoule be deleted when dict_filter is loaded from outside file'''
     clean_df = aggregate_lv1_by_location(input_address,filter_dict=dict_filter)
 
@@ -316,6 +319,8 @@ def main():
     # spatially joined data
     # create a schema for ESRI shapefile
     outSchema = {'geometry': 'Polygon', 'properties': {}}
+
+    # some title has been excluded to be added in the attribute table of voronoi output shapefile
     list_attribute_title = [
         str(clean_df.columns[ii])
         for ii in range(len(clean_df.columns))
@@ -323,6 +328,7 @@ def main():
         if 'latitude' != clean_df.columns[ii]
         if 'longitude' != clean_df.columns[ii]
         ]
+
     for ii in list_attribute_title:
         outSchema['properties'][ii] = 'str'
 
@@ -343,7 +349,7 @@ def main():
         for record_boundary in layer_boundary.filter():
             polygon_boundary = shape(record_boundary['geometry'])
             # LOOP FILTERED TABLE TO GET TITLE AS KEY AND VALUE AS VALUE IN DICT
-            with fiona.collection('TEST_all.shp','w','ESRI Shapefile', outSchema,crs) as output:
+            with fiona.collection('TEST_agri.shp','w','ESRI Shapefile', outSchema,crs) as output:
                 for polygon in areas:
                     attribute_each_record = {}
                     # see if country boundary intersect with this voronoi polygon
