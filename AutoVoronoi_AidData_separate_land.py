@@ -1,7 +1,7 @@
 """
 Author: Eugene Wang
 This code can be found in this Github Address: https://github.com/itpir/spatial-voronoi
-Established at Jun 23 2016
+Established at Jul 8 2016. Inherited from AutoVoronoi_AidData.py
 """
 import pandas as pd
 import numpy as np
