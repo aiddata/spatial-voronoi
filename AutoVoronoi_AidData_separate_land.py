@@ -23,7 +23,6 @@ import shapely.ops
 '''
 def aggregate_lv1_by_location(input_address, setting_csv_address = 'default', filter_dict = None):
 
-
     # read setting file to get a list of fields needed.
     if setting_csv_address == 'default':
         df_csv = read_setting('default_setting_voronoi.csv')
@@ -148,6 +147,8 @@ def filter_dataframe(input_dfadd, filter_dict):
     subset_overlapping = pd.read_csv(input_dfadd, encoding='utf-8')
     if filter_dict is None:
         return subset_overlapping
+    elif filter_dict == {}:
+        return subset_overlapping
 
     list_keys = filter_dict.keys()
     list_values = filter_dict.values()
@@ -248,6 +249,13 @@ def combineTwoList(l1, l2):
 This function is executed only when this script will be run directly.
 '''
 def main():
+    output_polygon_name = 'TEST_USA.shp'
+    output_point_name = 'Test_USA_point.shp'
+    dict_filter = {}
+    # if dict_filter remain {}, no record will be filtered.
+    # dict_filter['ad_sector_codes'] = 311
+    dict_filter['donors_iso3'] = 'USA'
+    ###############
     # read level1 csv data
     input_address = os.getcwd()+'/TimorLesteAIMS_GeocodedResearchRelease_Level1_v1.4.1/data/level_1a.csv'
     # dcsv = pd.read_csv(input_address)
@@ -256,8 +264,7 @@ def main():
     boundary_address = '/Users/EugeneWang/Desktop/AidData/project1/TimorLesteAIMS_GeocodedResearchRelease_Level1_v1.4.1/TLS_adm_shp/TLS_adm0.shp'
 
     '''testing code for dict_filter'''
-    dict_filter = {}
-    dict_filter['ad_sector_codes'] = 311
+
     '''testing. Shoule be deleted when dict_filter is loaded from outside file'''
     clean_df = aggregate_lv1_by_location(input_address, filter_dict=dict_filter)
 
@@ -267,23 +274,96 @@ def main():
     # append some points to set up bound the whole voronoi so unbounded polygon ban be shown in SHP
     # with (5000, 5000) and other three corners
     extra_point = np.array([[5000, 5000], [5000, -5000], [-5000, -5000], [-5000, 5000]])
-    att_lon_lat = np.concatenate((att_lon_lat, extra_point))
-    vor = Voronoi(att_lon_lat)
+    att_lon_lat_origin = att_lon_lat
+    #att_lon_lat = np.concatenate((att_lon_lat, extra_point))
+    # vor = Voronoi(att_lon_lat)
 
     # get lines of voronoi polygon
-    lines = [
-        LineString(vor.vertices[line])
-        for line in vor.ridge_vertices
-        if -1 not in line
-        ]
-
-    areas = list(shapely.ops.polygonize(lines))
+    #lines = [
+    #    LineString(vor.vertices[line])
+    #    for line in vor.ridge_vertices
+    #    if -1 not in line
+    #    ]
 
     # load coordinates into multipoints object
-    mtpoints = MultiPoint(att_lon_lat)
+    # mtpoints = MultiPoint(att_lon_lat)
+    mtpoints_original = MultiPoint(att_lon_lat_origin)
 
     # use list(points.geoms) or list(points) to access each point in MultiPoint object
-    list_points = list(mtpoints.geoms)
+    #list_points = list(mtpoints.geoms)
+    list_points_origional = list(mtpoints_original.geoms)
+
+    # with boundary shapefile 'r' as boundary:
+    with fiona.collection(boundary_address, 'r') as layer_boundary:
+        list_seperate_points = [] # list to store points seperated by continents or lands
+        list_seperate_coordinates = [] # list to store coordinates seperated by continents or lands
+        list_boundary_polygon = [] # list to store polygons of boundary polygons
+        list_voronoi_polygon = [] # polygon to store polygons by voronoi analysis
+        # and all lists here is under a order of elements responding to lands of country boundary
+
+        list_clipped_polygon = []
+
+        for item in layer_boundary.filter():
+            polygon_item = shape(item['geometry'])
+
+            # decompose Multipolygon to polygons
+            if polygon_item.geom_type == "MultiPolygon":
+                list_boundary_polygon.extend(list(polygon_item))
+            elif polygon_item.geom_type == 'Polygon':
+                list_boundary_polygon.append(polygon_item)
+
+        for polyboun in list_boundary_polygon:
+            points_in_polygon = []
+            coordinate_in_polygon = []
+            # loop through boundary polygon to seperate points located in different lands
+            for point in list_points_origional:
+                if point.within(polyboun):
+                    points_in_polygon.append(point)
+                    coordinate_in_polygon.append([point.x, point.y])
+                else:
+                    continue
+            list_seperate_points.append(points_in_polygon)
+            list_seperate_coordinates.append(coordinate_in_polygon)
+
+        for list_group in list_seperate_coordinates:
+            extra_point = np.array([[5000, 5000], [5000, -5000], [-5000, -5000], [-5000, 5000]])
+            # add extending points to have different lists
+            # do voronoi analysis to the list of points
+            # polygonize varonoiwwww
+
+            # if no point in a land
+            if len(list_group) == 0:
+                vor = Voronoi(extra_point)
+                lines = [
+                   LineString(vor.vertices[line])
+                   for line in vor.ridge_vertices
+                   if -1 not in line
+                   ]
+                areas = list(shapely.ops.polygonize(lines))
+            else:
+                arr = np.array(list_group)
+                arr_position_extend = np.concatenate((arr, extra_point))
+                vor = Voronoi(arr_position_extend)
+                lines = [
+                    LineString(vor.vertices[line])
+                    for line in vor.ridge_vertices
+                    if -1 not in line
+                    ]
+                areas = list(shapely.ops.polygonize(lines))
+            list_voronoi_polygon.append(areas)
+            # each value in the list above is voronoi surface based on points in different lands
+
+        # clip these polygons with respondant boundary polygon
+        for i in range(len(list_boundary_polygon)):
+            boundary = list_boundary_polygon[i]
+            v_polygon = list_voronoi_polygon[i]
+            # if no point in a land
+            if len(v_polygon) == 0:
+                list_clipped_polygon.append(boundary)
+            for patch in v_polygon:
+                if boundary.intersects(patch):
+                    list_clipped_polygon.append(boundary.intersection(patch))
+        # extracting attribute from point to polygon and output. IF no point belongs to it, make it the whole polygon (void)
 
     # spatially joined data
     # create a schema for ESRI shapefile
@@ -304,78 +384,113 @@ def main():
     # use WGS 84 , longlat , the kind of global use of Coordinate Reference System
     crs = from_epsg(4326)
 
-
     '''
         filter(bbox=None)
         Returns an iterator over records, but filtered by a test for spatial intersection with
         the provided bbox, a (minx, miny, maxx, maxy) tuple.
     '''
 
+    # with fiona.collection(boundary_address,'r') as layer_boundary:
+    #     # loop through bounary polygon
+    #     for record_boundary in layer_boundary.filter():
+    #         polygon_boundary = shape(record_boundary['geometry'])
+    #         # LOOP FILTERED TABLE TO GET TITLE AS KEY AND VALUE AS VALUE IN DICT
+    #         with fiona.collection('TEST_Agri.shp','w','ESRI Shapefile', outSchema,crs) as output:
+    #             for polygon in areas:
+    #                 attribute_each_record = {}
+    #                 # see if country boundary intersect with this voronoi polygon
+    #                 if polygon_boundary.intersects(polygon):
+    #                     # the polygon clipped
+    #                     is_att_assign = False
+    #                     intersection_polygon = polygon.intersection(polygon_boundary)
+#
+    #                     for point in list_points:
+    #                         if point.within(intersection_polygon):
+    #                             is_same_lat = clean_df.latitude == point.y
+    #                             is_same_lon = clean_df.longitude == point.x
+#
+    #                         # fill each field with their value
+    #                             for ii in list_attribute_title:
+    #                                 value = str(clean_df[is_same_lat & is_same_lon].head(1)[ii].values[0])
+    #                                 attribute_each_record[ii] = value
+#
+    #                             output.write({
+    #                                 'properties':attribute_each_record,
+    #                                 'geometry':mapping(intersection_polygon)
+    #                             })
+    #                             is_att_assign = True
+    #                         else:
+    #                             continue
+#
+    #                     # assign NaN to lands has no records
+    #                     if is_att_assign:
+    #                         continue
+    #                     else:
+    #                         for ii in list_attribute_title:
+    #                             value = 'NaN'
+    #                             attribute_each_record[ii] = value
+    #                         output.write({
+    #                             'properties': attribute_each_record,
+    #                             'geometry': mapping(intersection_polygon)
+    #                         })
+    #                 else:
+    #                     continue
 
-    with fiona.collection(boundary_address,'r') as layer_boundary:
-        # loop through bounary polygon
-        for record_boundary in layer_boundary.filter():
-            polygon_boundary = shape(record_boundary['geometry'])
-            # LOOP FILTERED TABLE TO GET TITLE AS KEY AND VALUE AS VALUE IN DICT
-            with fiona.collection('TEST_Agri.shp','w','ESRI Shapefile', outSchema,crs) as output:
-                for polygon in areas:
-                    attribute_each_record = {}
-                    # see if country boundary intersect with this voronoi polygon
-                    if polygon_boundary.intersects(polygon):
-                        # the polygon clipped
-                        is_att_assign = False
-                        intersection_polygon = polygon.intersection(polygon_boundary)
 
-                        for point in list_points:
-                            if point.within(intersection_polygon):
-                                is_same_lat = clean_df.latitude == point.y
-                                is_same_lon = clean_df.longitude == point.x
+    with fiona.collection(boundary_address, 'r') as layer_boundary:
+        with fiona.collection(output_polygon_name, 'w', 'ESRI Shapefile', outSchema,crs) as output:
+            for polygon in list_clipped_polygon:
+                is_att_assign = False
+                attribute_each_record = {}
 
-                                dict_properties = {}
-                            # fill each field with their value
-                                for ii in list_attribute_title:
-                                    value = str(clean_df[is_same_lat & is_same_lon].head(1)[ii].values[0])
-                                    attribute_each_record[ii] = value
+                for point in list_points_origional:
+                    if point.within(polygon):
+                        is_same_lat = clean_df.latitude == point.y
+                        is_same_lon = clean_df.longitude == point.x
 
-                                output.write({
-                                    'properties':attribute_each_record,
-                                    'geometry':mapping(intersection_polygon)
-                                })
-                                is_att_assign = True
-                            else:
-                                continue
+                        # fill each field with their value
+                        for ii in list_attribute_title:
+                            value = str(clean_df[is_same_lat & is_same_lon].head(1)[ii].values[0])
+                            attribute_each_record[ii] = value
 
-                        # assign NaN to lands has no records
-                        if is_att_assign:
-                            continue
-                        else:
-                            for ii in list_attribute_title:
-                                value = 'NaN'
-                                attribute_each_record[ii] = value
-                            output.write({
-                                'properties': attribute_each_record,
-                                'geometry': mapping(intersection_polygon)
-                            })
+                        output.write({
+                            'properties': attribute_each_record,
+                            'geometry': mapping(polygon)
+                        })
+                        is_att_assign = True
+
+                # if polygon still has no match after all points has been looped.
+                if is_att_assign:
+                    continue
+                else:
+                    for ii in list_attribute_title:
+                        value = 'NaN'
+                        attribute_each_record[ii] = value
+                    output.write({
+                        'properties': attribute_each_record,
+                        'geometry': mapping(polygon)
+                    })
 
 
-                    else:
-                        continue
 
     # test to see points
-    outSchema = {'geometry': 'Point', 'properties': {'donors_iso':'str'}}
-    with fiona.collection('Test_Agri_point.shp', 'w', 'ESRI Shapefile', outSchema, crs) as output_point:
-        for point in list_points:
+    # outSchema = {'geometry': 'Point', 'properties': {'donors_iso':'str'}}
+    outSchema['geometry'] = 'Point'
+    with fiona.collection(output_point_name, 'w', 'ESRI Shapefile', outSchema, crs) as output_point:
+        for point in list_points_origional:
             attribute_each_record = {}
             is_same_lat = clean_df.latitude == point.y
             is_same_lon = clean_df.longitude == point.x
             try:
-                attribute_each_record['donors_iso'] = str(clean_df[is_same_lat & is_same_lon].head(1)['donors_iso3'].values[0])
+                for ii in list_attribute_title:
+                    value = str(clean_df[is_same_lat & is_same_lon].head(1)[ii].values[0])
+                    attribute_each_record[ii] = value
             except:
                 # continue if point is one of points used to wrap voronoi polygon E.G.(5000, 5000), (
                 continue
             output_point.write({
                 'properties': attribute_each_record,
-                'geometry':mapping(point)
+                'geometry': mapping(point)
             })
 
 
