@@ -11,7 +11,9 @@ from scipy.spatial import Voronoi
 import fiona
 from fiona.crs import from_epsg
 import shapely.ops
+import datetime
 import AutoVoronoi_config
+
 
 '''
 # function 1: aggregate_lv1_by_location()
@@ -141,6 +143,8 @@ sample of filter_dict:      #lat and long will be used without any statement
 {'sector': [311,310,998], 'donors_iso3': ['USA']}
 {'aaa':['USA']}  Even only one word is search for field 'aaa', make the word in a list
 {'donors_iso3':'USA'} The value can be only a string value
+{'year_duration':{'starting year':####, 'ending year':####}} PS: for searching time duration, the field_name are keys.
+                                                                Starting point first, ending point last.
 '''
 def filter_dataframe(input_dfadd, filter_dict):
 
@@ -191,6 +195,7 @@ def get_condition_key(value_filter, key_filter, input_dfadd):
 
     # get condition_key by the type of value
     if type(value_filter) is str:
+        # searching one string
         print 'processing filter: field \'%s\' contain %s' %(key_filter, value_filter)
         if condition_key is None:
             condition_key = input_df[key_filter].str.contains(value_filter, na=False)
@@ -198,6 +203,7 @@ def get_condition_key(value_filter, key_filter, input_dfadd):
             new_boolean = input_df[key_filter].str.contains(value_filter, na= False)
             condition_key = condition_key | new_boolean
     elif type(value_filter) is int:
+        # searching one value
         print 'processing filter: field \'%s\' contain %d' %(key_filter, value_filter)
         if condition_key is None:
             condition_key = input_df[key_filter].str.contains(str(value_filter), na=False)
@@ -205,15 +211,15 @@ def get_condition_key(value_filter, key_filter, input_dfadd):
             new_boolean = input_df[key_filter] == value_filter
             condition_key = condition_key | new_boolean
     elif type(value_filter) is float:
+        # searching one value
         print 'processing filter: \'%s\' contain %d' % (key_filter, value_filter)
         if condition_key is None:
-            condition_key = input_df[key_filter] == input_df[key_filter].str.contains(str(value_filter), na=False)
+            condition_key = input_df[key_filter].str.contains(str(value_filter), na=False)
         else:
             new_boolean = input_df[key_filter] == value_filter
             condition_key = condition_key | new_boolean
     elif type(value_filter) is list:
-        # this algorithm make all element in a list equal to each other.
-        # Even elements in another list wrapped within this list
+        # searching multiple values
         stack_condition = None
         for counter, item in enumerate(value_filter):
             new_condition = get_condition_key(item, key_filter, input_dfadd)
@@ -222,7 +228,37 @@ def get_condition_key(value_filter, key_filter, input_dfadd):
             else:
                 stack_condition = stack_condition | new_condition
         condition_key = stack_condition
+    elif type(value_filter) is dict:
+        # list a time span in the filter to limit the records.
+        start_year = value_filter.values[0]
+        end_year = value_filter.values[1]
+        start_field = value_filter.keys[0]
+        end_field = value_filter.keys[1]
 
+        input_df[start_field] = pd.to_datetime(input_df[start_field])
+        input_df[end_field] = pd.to_datetime(input_df[end_field])
+        try:
+            # records not end before filter starts
+            not_early = input_df[end_field] >= pd.Timestamp(datetime.date(int(start_year), 1, 1))
+
+            # records not start later filter ends.
+            not_late = input_df[start_field] <= pd.Timestamp(datetime.date(int(end_year), 12, 31))
+
+            condition_key = not_early & not_late
+
+            # exclude where start_field and end_field both empty if configuration allows
+            if AutoVoronoi_config.allow_empty_time_record is True:
+                null_start = input_df[start_field].isnull()
+                null_end = input_df[end_field].isnull()
+                new_condition = null_start & null_end
+                condition_key = condition_key | new_condition
+
+
+            #condition_start = input_df[start_field] > int(start_year)
+            #condition_end = input_df[end_field] < int(end_year)
+        except:
+            raise NameError('Please check time-related field name has been correctly inputted and'
+                            ' the year value should be integer')
     return condition_key
 
 '''
@@ -244,54 +280,25 @@ def combineTwoList(l1, l2):
                 continue
     return l1
 
-#####################################################################################################################
 '''
-This function is executed only when this script will be run directly.
+function 2: get_clipped_voronoi
+description : This function will do :
+                records seperation based on islands,then do voronoi analysis based on different
+                groups of seperated records,
+                polygonize voronoi,
+                clip voronoi based on country boundary
+                and finally put each clipped polygon into a list
+# input: boundary_fullpath, list_points_original
+# output: a list of clipped polygon
 '''
-def main():
-    output_polygon_name = AutoVoronoi_config.output_polygon_fullpath
-    output_point_name = AutoVoronoi_config.output_point_fullpath
-    dict_filter = AutoVoronoi_config.dict_filter
-    # if dict_filter remain {}, no record will be filtered.
-    # dict_filter['ad_sector_codes'] = 311
-    # dict_filter['donors_iso3'] = 'USA'
-
-    # read level1 csv data
-    # input_address = os.getcwd() + '/TimorLesteAIMS_GeocodedResearchRelease_Level1_v1.4.1/data/level_1a.csv'
-    input_address = AutoVoronoi_config.level1_fullpath
-    # the input shapefile of boundary
-    # boundary_address = '/Users/EugeneWang/Desktop/AidData/project1/TimorLesteAIMS_GeocodedResearchRelease_Level1_v1.4.1/TLS_adm_shp/TLS_adm0.shp'
-    boundary_address = AutoVoronoi_config.boundary_fullpath
-    # setcsv_fullpath = 'default'
-    setcsv_fullpath = AutoVoronoi_config.attribute_csv_fullpath
-    ###############
-
-
-    '''testing code for dict_filter'''
-
-    '''testing. Shoule be deleted when dict_filter is loaded from outside file'''
-    clean_df = aggregate_lv1_by_location(input_address,setting_csv_address=setcsv_fullpath, filter_dict=dict_filter)
-
-    # get the numpy array of latitude and longitude
-    att_lon_lat = clean_df.loc[:, ['longitude', 'latitude']].values
-
-    # append some points to set up bound the whole voronoi so unbounded polygon ban be shown in SHP
-    # with (5000, 5000) and other three corners
-    att_lon_lat_origin = att_lon_lat
-
-    # load coordinates into multipoints object
-    mtpoints_original = MultiPoint(att_lon_lat_origin)
-
-    # use list(points.geoms) or list(points) to access each point in MultiPoint object
-    list_points_origional = list(mtpoints_original.geoms)
-
+def get_clipped_voronoi(boundary_fullpath, list_points):
     # with boundary shapefile 'r' as boundary:
-    with fiona.collection(boundary_address, 'r') as layer_boundary:
+    with fiona.collection(boundary_fullpath, 'r') as layer_boundary:
 
-        list_seperate_points = []       # list to store points seperated by continents or lands
+        list_seperate_points = []  # list to store points seperated by continents or lands
         list_seperate_coordinates = []  # list to store coordinates seperated by continents or lands
-        list_boundary_polygon = []      # list to store polygons of boundary polygons
-        list_voronoi_polygon = []       # polygon to store polygons by voronoi analysis
+        list_boundary_polygon = []  # list to store polygons of boundary polygons
+        list_voronoi_polygon = []  # polygon to store polygons by voronoi analysis
 
         # and all lists here is under a order of elements responding to lands of country boundary
 
@@ -312,7 +319,7 @@ def main():
             points_in_polygon = []
             coordinate_in_polygon = []
             # loop through boundary polygon to seperate points located in different lands
-            for point in list_points_origional:
+            for point in list_points:
                 if point.within(polyboun):
                     points_in_polygon.append(point)
                     coordinate_in_polygon.append([point.x, point.y])
@@ -332,10 +339,10 @@ def main():
             if len(list_group) == 0:
                 vor = Voronoi(extra_point)
                 lines = [
-                   LineString(vor.vertices[line])
-                   for line in vor.ridge_vertices
-                   if -1 not in line
-                   ]
+                    LineString(vor.vertices[line])
+                    for line in vor.ridge_vertices
+                    if -1 not in line
+                    ]
                 areas = list(shapely.ops.polygonize(lines))
             else:
                 arr = np.array(list_group)
@@ -360,6 +367,43 @@ def main():
             for patch in v_polygon:
                 if boundary.intersects(patch):
                     list_clipped_polygon.append(boundary.intersection(patch))
+
+        return list_clipped_polygon
+
+#####################################################################################################################
+'''
+This function is executed only when this script will be run directly.
+'''
+def main():
+    AutoVoronoi_config.load_input()
+    output_polygon_name = AutoVoronoi_config.output_polygon_fullpath
+    output_point_name = AutoVoronoi_config.output_point_fullpath
+    dict_filter = AutoVoronoi_config.dict_filter
+
+    # read level1 csv data
+    input_address = AutoVoronoi_config.level1_fullpath
+    # the input shapefile of boundary
+    boundary_address = AutoVoronoi_config.boundary_fullpath
+    setcsv_fullpath = AutoVoronoi_config.attribute_csv_fullpath
+    ###############
+
+
+    clean_df = aggregate_lv1_by_location(input_address,setting_csv_address=setcsv_fullpath, filter_dict=dict_filter)
+
+    # get the numpy array of latitude and longitude
+    att_lon_lat = clean_df.loc[:, ['longitude', 'latitude']].values
+
+    # append some points to set up bound the whole voronoi so unbounded polygon ban be shown in SHP
+    # with (5000, 5000) and other three corners
+    att_lon_lat_origin = att_lon_lat
+
+    # load coordinates into multipoints object
+    mtpoints_original = MultiPoint(att_lon_lat_origin)
+
+    # use list(points.geoms) or list(points) to access each point in MultiPoint object
+    list_points_origional = list(mtpoints_original.geoms)
+
+    list_clipped_polygon = get_clipped_voronoi(boundary_address, list_points_origional)
 
 
     # create a schema for ESRI shapefile
@@ -422,7 +466,6 @@ def main():
                         'geometry': mapping(polygon)
                     })
 
-
     # test to see points
     outSchema['geometry'] = 'Point'
     with fiona.collection(output_point_name, 'w', 'ESRI Shapefile', outSchema, crs) as output_point:
@@ -442,6 +485,29 @@ def main():
                 'geometry': mapping(point)
             })
 
+'''
+function: hightlight_mode
+desciption: In this mode, all records are involved in voronoi analysis, but highlight those fitting the filter, against the others
+# input:  nothing
+# output: nothing
+# export: shapefile of voronoi analysis, with a field featuring if records fulfill requirement.
+'''
+def highlight_mode():
+
+    # check input parameter and load them
+    AutoVoronoi_config.load_input()
+    output_polygon_name = str(AutoVoronoi_config.output_polygon_fullpath)
+    output_point_name = str(AutoVoronoi_config.output_point_fullpath)
+    dict_filter = dict(AutoVoronoi_config.dict_filter)
+    # read level1 csv data
+    input_address = str(AutoVoronoi_config.level1_fullpath)
+    # the input shapefile of boundary
+    boundary_address = str(AutoVoronoi_config.boundary_fullpath)
+    setcsv_fullpath = str(AutoVoronoi_config.attribute_csv_fullpath)
+
+    #######################################
+    # time filter set up
+    clean_df = aggregate_lv1_by_location(input_address, setcsv_fullpath)
 
 
 
@@ -450,4 +516,10 @@ def main():
 # make sure only run this script directly will have all functions work
 
 if __name__ ==  '__main__':
-    main()
+    if AutoVoronoi_config.voronoi_mode == 0:
+        main()
+    elif AutoVoronoi_config.voronoi_mode == 1:
+        highlight_mode()
+    elif AutoVoronoi_config.voronoi_mode == 2:
+        pairwise_mode()
+
