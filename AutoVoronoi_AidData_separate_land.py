@@ -26,17 +26,7 @@ import AutoVoronoi_config
 def aggregate_lv1_by_location(input_address, setting_csv_address = 'default', filter_dict = None):
 
     # read setting file to get a list of fields needed.
-    if setting_csv_address == 'default':
-        df_csv = read_setting('default_setting_voronoi.csv')
-    else:
-        try:
-            filename, file_ext = os.path.splitext(setting_csv_address)
-            if os.path.isfile(setting_csv_address) & file_ext == ('.csv'):
-                df_csv = read_setting(setting_csv_address)
-            else:
-                print 'This input setting file is not wrong. It should be a .csv file'
-        except:
-            print 'The setting file has an incorrect address or incorrect format'
+    df_csv = read_setting(setting_csv_address)
 
     # this function is not debugged or test fully yet
     # filter the dataframe with filter_dict
@@ -128,8 +118,19 @@ input: csv(Setting CSV address or 'default')
 return: dataframe (dataframe of setting)
 '''
 def read_setting(csv):
-    dataframe = pd.read_csv(csv, encoding='utf-8')
-    return dataframe
+    if csv == 'default':
+        df_csv = pd.read_csv('default_setting_voronoi.csv', encoding='utf-8')
+    else:
+        try:
+            filename, file_ext = os.path.splitext(csv)
+            if os.path.isfile(csv) & file_ext == ('.csv'):
+                df_csv = pd.read_csv(csv, encoding='utf-8')
+            else:
+                raise ImportError('This input setting file is not wrong. It should be a .csv file')
+        except:
+            raise ImportError('The setting file has an incorrect address or incorrect format')
+
+    return df_csv
 
 '''
 function 1.2: filter_dataframe()
@@ -158,7 +159,6 @@ def filter_dataframe(input_dfadd, filter_dict):
     list_values = filter_dict.values()
     condition_key = None
     condition_all = None
-
 
     # loop every key and value to complete boolean value
     for i in range(len(list_keys)):
@@ -208,7 +208,7 @@ def get_condition_key(value_filter, key_filter, input_dfadd):
         if condition_key is None:
             condition_key = input_df[key_filter].str.contains(str(value_filter), na=False)
         else:
-            new_boolean = input_df[key_filter] == value_filter
+            new_boolean = input_df[key_filter].str.contains(str(value_filter), na=False)
             condition_key = condition_key | new_boolean
     elif type(value_filter) is float:
         # searching one value
@@ -216,7 +216,7 @@ def get_condition_key(value_filter, key_filter, input_dfadd):
         if condition_key is None:
             condition_key = input_df[key_filter].str.contains(str(value_filter), na=False)
         else:
-            new_boolean = input_df[key_filter] == value_filter
+            new_boolean = input_df[key_filter].str.contains(str(value_filter), na=False)
             condition_key = condition_key | new_boolean
     elif type(value_filter) is list:
         # searching multiple values
@@ -251,9 +251,10 @@ def get_condition_key(value_filter, key_filter, input_dfadd):
                 null_start = input_df[start_field].isnull()
                 null_end = input_df[end_field].isnull()
                 new_condition = null_start & null_end
-                condition_key = condition_key | new_condition
-
-
+                if condition_key is None:
+                    condition_key = new_condition
+                else:
+                    condition_key = condition_key | new_condition
             #condition_start = input_df[start_field] > int(start_year)
             #condition_end = input_df[end_field] < int(end_year)
         except:
@@ -330,10 +331,9 @@ def get_clipped_voronoi(boundary_fullpath, list_points):
 
         # get a list of voronoi polygon in order of lands
         for list_group in list_seperate_coordinates:
+            # append some points to set up bound the whole voronoi so unbounded polygon ban be shown in SHP
+            # with (5000, 5000) and other three corners
             extra_point = np.array([[5000, 5000], [5000, -5000], [-5000, -5000], [-5000, 5000]])
-            # add extending points to have different lists
-            # do voronoi analysis to the list of points
-            # polygonize varonoi
 
             # if no point in a land
             if len(list_group) == 0:
@@ -343,6 +343,7 @@ def get_clipped_voronoi(boundary_fullpath, list_points):
                     for line in vor.ridge_vertices
                     if -1 not in line
                     ]
+                # polygonize varonoi
                 areas = list(shapely.ops.polygonize(lines))
             else:
                 arr = np.array(list_group)
@@ -370,12 +371,34 @@ def get_clipped_voronoi(boundary_fullpath, list_points):
 
         return list_clipped_polygon
 
+
+'''
+function 3: merge_two_dicts()
+description: merge two dictionary without changing original dict.
+'''
+def merge_two_dicts(x, y):
+    '''Given two dicts, merge them into a new dict as a shallow copy.'''
+    z = x.copy()
+    z.update(y)
+    return z
+
+'''
+function 4: create_folder()
+description: create a folder by name,  if existed ,add an extention name
+input: dirname (folder name)
+output: none
+'''
+def create_folder(dirname):
+    if os.path.exists(dirname):
+        dirname = dirname+'_new'
+        create_folder(dirname)
+    else:
+        os.mkdir(dirname)
 #####################################################################################################################
 '''
 This function is executed only when this script will be run directly.
 '''
 def main():
-    AutoVoronoi_config.load_input()
     output_polygon_name = AutoVoronoi_config.output_polygon_fullpath
     output_point_name = AutoVoronoi_config.output_point_fullpath
     dict_filter = AutoVoronoi_config.dict_filter
@@ -391,11 +414,7 @@ def main():
     clean_df = aggregate_lv1_by_location(input_address,setting_csv_address=setcsv_fullpath, filter_dict=dict_filter)
 
     # get the numpy array of latitude and longitude
-    att_lon_lat = clean_df.loc[:, ['longitude', 'latitude']].values
-
-    # append some points to set up bound the whole voronoi so unbounded polygon ban be shown in SHP
-    # with (5000, 5000) and other three corners
-    att_lon_lat_origin = att_lon_lat
+    att_lon_lat_origin = clean_df.loc[:, ['longitude', 'latitude']].values
 
     # load coordinates into multipoints object
     mtpoints_original = MultiPoint(att_lon_lat_origin)
@@ -429,42 +448,38 @@ def main():
         Returns an iterator over records, but filtered by a test for spatial intersection with
         the provided bbox, a (minx, miny, maxx, maxy) tuple.
     '''
-    with fiona.collection(boundary_address, 'r') as layer_boundary:
-        with fiona.collection(output_polygon_name, 'w', 'ESRI Shapefile', outSchema,crs) as output:
-            for polygon in list_clipped_polygon:
-                is_att_assign = False
-                attribute_each_record = {}
 
-                # extracting attribute from point to polygon and output.
-                # IF no point belongs to it, make it the whole polygon (void)
-                for point in list_points_origional:
-                    # spatially join data from point to polygon
-                    if point.within(polygon):
-                        is_same_lat = clean_df.latitude == point.y
-                        is_same_lon = clean_df.longitude == point.x
-
-                        # fill each field with their value
-                        for ii in list_attribute_title:
-                            value = str(clean_df[is_same_lat & is_same_lon].head(1)[ii].values[0])
-                            attribute_each_record[ii] = value
-
-                        output.write({
-                            'properties': attribute_each_record,
-                            'geometry': mapping(polygon)
-                        })
-                        is_att_assign = True
-
-                # if polygon still has no match after all points has been looped.
-                if is_att_assign:
-                    continue
-                else:
+    with fiona.collection(output_polygon_name, 'w', 'ESRI Shapefile', outSchema,crs) as output:
+        for polygon in list_clipped_polygon:
+            is_att_assign = False
+            attribute_each_record = {}
+            # extracting attribute from point to polygon and output.
+            # IF no point belongs to it, make it the whole polygon (void)
+            for point in list_points_origional:
+                # spatially join data from point to polygon
+                if point.within(polygon):
+                    is_same_lat = clean_df.latitude == point.y
+                    is_same_lon = clean_df.longitude == point.x
+                    # fill each field with their value
                     for ii in list_attribute_title:
-                        value = 'NaN'
+                        value = str(clean_df[is_same_lat & is_same_lon].head(1)[ii].values[0])
                         attribute_each_record[ii] = value
                     output.write({
                         'properties': attribute_each_record,
                         'geometry': mapping(polygon)
                     })
+                    is_att_assign = True
+            # if polygon still has no match to record points after all points has been looped.
+            if is_att_assign:
+                continue
+            else:
+                for ii in list_attribute_title:
+                    value = ''
+                    attribute_each_record[ii] = value
+                output.write({
+                    'properties': attribute_each_record,
+                    'geometry': mapping(polygon)
+                })
 
     # test to see points
     outSchema['geometry'] = 'Point'
@@ -495,19 +510,334 @@ desciption: In this mode, all records are involved in voronoi analysis, but high
 def highlight_mode():
 
     # check input parameter and load them
-    AutoVoronoi_config.load_input()
-    output_polygon_name = str(AutoVoronoi_config.output_polygon_fullpath)
-    output_point_name = str(AutoVoronoi_config.output_point_fullpath)
-    dict_filter = dict(AutoVoronoi_config.dict_filter)
+    output_polygon_name = AutoVoronoi_config.output_polygon_fullpath
+    output_point_name = AutoVoronoi_config.output_point_fullpath
+    dict_filter = AutoVoronoi_config.dict_filter
     # read level1 csv data
-    input_address = str(AutoVoronoi_config.level1_fullpath)
+    input_address = AutoVoronoi_config.level1_fullpath
     # the input shapefile of boundary
-    boundary_address = str(AutoVoronoi_config.boundary_fullpath)
-    setcsv_fullpath = str(AutoVoronoi_config.attribute_csv_fullpath)
+    boundary_address = AutoVoronoi_config.boundary_fullpath
+    setcsv_fullpath = AutoVoronoi_config.attribute_csv_fullpath
+    timefilter = AutoVoronoi_config.time_filter
 
     #######################################
     # time filter set up
-    clean_df = aggregate_lv1_by_location(input_address, setcsv_fullpath)
+    clean_df = aggregate_lv1_by_location(input_address, setcsv_fullpath, timefilter)
+
+    # get the numpy array of latitude and longitude
+    att_lon_lat_origin = clean_df.loc[:, ['longitude', 'latitude']].values
+
+    # load coordinates into multipoints object
+    mtpoints_original = MultiPoint(att_lon_lat_origin)
+
+    list_points_origional = list(mtpoints_original.geoms)
+
+    list_clipped_polygon = get_clipped_voronoi(boundary_address, list_points_origional)
+
+    request_df = aggregate_lv1_by_location(input_address, setcsv_fullpath, dict_filter)
+
+    requested_lon_lat = request_df.loc[:,['longitude', 'latitude']].values
+    list_requested_points = list(MultiPoint(requested_lon_lat).geoms)
+
+    # create a schema for ESRI shapefile
+    outSchema = {'geometry': 'Polygon', 'properties': {}}
+
+    # some title has been excluded to be added in the attribute table of voronoi output shapefile
+    list_attribute_title = [
+        str(clean_df.columns[ii])
+        for ii in range(len(clean_df.columns))
+        if 'Unnamed: 0' != clean_df.columns[ii]
+        if 'latitude' != clean_df.columns[ii]
+        if 'longitude' != clean_df.columns[ii]
+        ]
+
+    # for ii in list_attribute_title:
+    #     outSchema['properties'][ii] = 'str'
+    # add one new property
+    outSchema['properties']['requested'] = 'int'
+    outSchema['properties']['att_fil'] = 'str'
+    outSchema['properties']['time_fil'] = 'str'
+
+    # use WGS 84 , longlat , the kind of global use of Coordinate Reference System
+    crs = from_epsg(4326)
+
+    with fiona.collection(output_polygon_name, 'w', 'ESRI Shapefile', outSchema,crs) as output:
+        for polygon in list_clipped_polygon:
+            is_att_assign = False
+            for point in list_requested_points:
+                attribute_each_record = {}
+                if point.within(polygon):
+                    attribute_each_record['requested'] = 1
+                    attribute_each_record['att_fil'] = str(dict_filter)
+                    attribute_each_record['time_fil'] = str(timefilter)
+
+                    is_same_lat = clean_df.latitude == point.y
+                    is_same_lon = clean_df.longitude == point.x
+                    # fill each field with their value
+                    for ii in list_attribute_title:
+                        value = str(clean_df[is_same_lat & is_same_lon].head(1)[ii].values[0])
+                        attribute_each_record[ii] = value
+                    output.write({
+                        'properties': attribute_each_record,
+                        'geometry': mapping(polygon)
+                    })
+                    is_att_assign = True
+                else:
+                    continue
+
+            if is_att_assign:
+                continue
+            else:
+                attribute_each_record['requested'] = 0
+                attribute_each_record['att_fil'] = str(dict_filter)
+                attribute_each_record['time_fil'] = str(timefilter)
+                for ii in list_attribute_title:
+                    value = ''
+                    attribute_each_record[ii] = value
+                output.write({
+                    'properties': attribute_each_record,
+                    'geometry': mapping(polygon)
+                })
+
+
+
+def pairwise_mode():
+    # check input parameter and load them
+    output_polygon_name = AutoVoronoi_config.output_polygon_fullpath
+    output_point_name = AutoVoronoi_config.output_point_fullpath
+    dict_filter = AutoVoronoi_config.dict_filter
+    # read level1 csv data
+    input_address = AutoVoronoi_config.level1_fullpath
+    # the input shapefile of boundary
+    boundary_address = AutoVoronoi_config.boundary_fullpath
+    setcsv_fullpath = AutoVoronoi_config.attribute_csv_fullpath
+    timefilter = AutoVoronoi_config.time_filter
+
+    comparing_country = AutoVoronoi_config.comparing_countries_iso
+
+#######################################################################
+    all_dict = merge_two_dicts(dict_filter, timefilter)
+
+    #1 get aggregated dataframe based on time filter:
+    aftertime_df = aggregate_lv1_by_location(input_address, setcsv_fullpath, all_dict)
+    #2 get countries donating money to the same regions as comparing countries did
+    set_field = set(aftertime_df['donors_iso3'].tolist())
+    list_donors = []
+    for i in set_field:
+        temp_list_donor = str(i).split('|')
+        list_donors = combineTwoList(list_donors, temp_list_donor)
+
+    filter_others = {}
+    list_others = []
+    for i in list_donors:
+        # exclude comparing countries in it.
+        if i == comparing_country:
+            continue
+        list_donors.append(i)
+    filter_others['donors_iso3'] = filter_others
+
+    if not os.path.isdir(output_polygon_name):
+        dirname = comparing_country +' vs others'
+        create_folder(dirname)
+        output_polygon_name = os.getcwd()+'/' + dirname + '/'
+        print 'output polygon path is not a folder, polygon output has been placed in '+ output_polygon_name
+
+    if not os.path.isdir(output_point_name):
+        dirname = comparing_country + ' vs others_points'
+        create_folder(dirname)
+        output_point_name = os.getcwd()+'/' + dirname + '/'
+        print 'output point path is not a folder, point output has been placed in ' + output_point_name
+
+    #loop each other donor
+    for other in list_others:
+        #get selection of records of conflicting areas and none conflicting areas
+        condition_other = aftertime_df['donors_iso3'].str.contains(str(other), na=False)
+        condition_comparing = aftertime_df['donors_iso3'].str.contains(str(comparing_country), na= False)
+        condition_conflict = condition_other & condition_comparing
+        condition_non_conconflict = (condition_other | condition_conflict) & (~condition_conflict)
+
+
+        df_two_country = aftertime_df[condition_other | condition_comparing]
+
+        #4 create voronoi polygon
+        lonlat_two_country = df_two_country.loc[:, ['longitude', 'latitude']].values
+        point_two_country = MultiPoint(lonlat_two_country)
+        list_points = list(point_two_country.geoms)
+        list_clipped_polygon = get_clipped_voronoi(boundary_address, list_points)
+
+        #5 check each polygon (or records in dataframe of #3) to see if there is conflicts between comparing countries
+        #  and the other countries
+        # create a schema for ESRI shapefile
+        outSchema = {'geometry': 'Polygon', 'properties': {}}
+
+        # some title has been excluded to be added in the attribute table of voronoi output shapefile
+        list_attribute_title = [
+            str(aftertime_df.columns[ii])
+            for ii in range(len(aftertime_df.columns))
+            if 'Unnamed: 0' != aftertime_df.columns[ii]
+            if 'latitude' != aftertime_df.columns[ii]
+            if 'longitude' != aftertime_df.columns[ii]
+            ]
+
+        outSchema['properties']['vs_status_code'] = 'int'
+        outSchema['properties']['vs_status'] = 'str'
+        outSchema['properties']['donor_iso'] = 'str'
+
+        # use WGS 84 , longlat , the kind of global use of Coordinate Reference System
+        crs = from_epsg(4326)
+
+        polygon_shp = comparing_country + ' to ' + other+ '_voronoi.shp'
+        output_polygon_fullpath = output_polygon_name + polygon_shp
+
+        point_shp = comparing_country + ' to ' + other+ '_point.shp'
+        output_point_fullpath = output_point_name + point_shp
+
+        with fiona.collection(output_polygon_fullpath,'w', 'ESRI Shapefile', outSchema,crs) as output:
+            for polygon in list_clipped_polygon:
+                is_att_assign = False
+                attribute_each_record = {}
+                # nonconflict & the comparing country (the one comparing with others)
+                df_noncon_comparing = aftertime_df[condition_non_conconflict & condition_comparing]
+                lonlat_noncon_compare = df_noncon_comparing.loc[:, ['longitude', 'latitude']]
+                point_noncon_compare = list(MultiPoint(lonlat_noncon_compare.values).geoms)
+
+                for point in point_noncon_compare:
+                    if point.within(polygon):
+                        # 0 for non-conflicting
+                        attribute_each_record['vs_status_code'] = 0
+                        attribute_each_record['vs_status'] = 'non-conflicting'
+                        attribute_each_record['donor_iso'] = comparing_country
+
+                        is_same_lat = aftertime_df.latitude == point.y
+                        is_same_lon = aftertime_df.longitude == point.x
+                        # fill each field with their value
+                        for ii in list_attribute_title:
+                            value = str(aftertime_df[is_same_lat & is_same_lon].head(1)[ii].values[0])
+                            attribute_each_record[ii] = value
+                        output.write({
+                            'properties': attribute_each_record,
+                            'geometry': mapping(polygon)
+                        })
+                        is_att_assign = True
+                        break
+                    else:
+                        continue
+
+                # if polygon has found matching point, continue to the next polygon
+                if is_att_assign:
+                    continue
+
+                # nonconflict & one of the others
+
+                df_non_other = aftertime_df[condition_non_conconflict & condition_other]
+                lonlat_noncon_other = df_non_other.loc[:, ['longitude', 'latitude']]
+                point_noncon_other = list(MultiPoint(lonlat_noncon_other.values).geoms)
+
+                for point in point_noncon_other:
+                    if point.within(polygon):
+                        # 0 for non-conflicting
+                        attribute_each_record['vs_status_code'] = 0
+                        attribute_each_record['vs_status'] = 'non-conflicting'
+                        attribute_each_record['donor_iso'] = other
+
+                        is_same_lat = aftertime_df.latitude == point.y
+                        is_same_lon = aftertime_df.longitude == point.x
+                        # fill each field with their value
+                        for ii in list_attribute_title:
+                            value = str(aftertime_df[is_same_lat & is_same_lon].head(1)[ii].values[0])
+                            attribute_each_record[ii] = value
+                        output.write({
+                            'properties': attribute_each_record,
+                            'geometry': mapping(polygon)
+                        })
+                        is_att_assign = True
+                        break
+                    else:
+                        continue
+
+                if is_att_assign:
+                    continue
+
+                # conflicting
+                df_con = aftertime_df[condition_conflict]
+                lonlat_con = df_con.loc[:, ['longitude', 'latitude']]
+                point_con = list(MultiPoint(lonlat_con.values).geoms)
+
+                for point in point_con:
+                    if point.within(polygon):
+                        # 0 for non-conflicting
+                        attribute_each_record['vs_status_code'] = 1
+                        attribute_each_record['vs_status'] = 'conflicting'
+                        attribute_each_record['donor_iso'] = other + '|' +comparing_country
+
+                        is_same_lat = aftertime_df.latitude == point.y
+                        is_same_lon = aftertime_df.longitude == point.x
+                        # fill each field with their value
+                        for ii in list_attribute_title:
+                            value = str(aftertime_df[is_same_lat & is_same_lon].head(1)[ii].values[0])
+                            attribute_each_record[ii] = value
+                        output.write({
+                            'properties': attribute_each_record,
+                            'geometry': mapping(polygon)
+                        })
+                        is_att_assign = True
+                        break
+                    else:
+                        continue
+
+                if is_att_assign:
+                    continue
+
+                if is_att_assign:
+                    continue
+                else:
+                    attribute_each_record['vs_status_code'] = -1
+                    attribute_each_record['vs_status'] = 'void'
+                    attribute_each_record['donor_iso'] = 'void'
+                    for ii in list_attribute_title:
+                        value = ''
+                        attribute_each_record[ii] = value
+                    output.write({
+                        'properties': attribute_each_record,
+                        'geometry': mapping(polygon)
+                    })
+
+        print output_polygon_fullpath + 'is created'
+
+        outSchema = {'geometry': 'Polygon', 'properties': {}}
+
+        # some title has been excluded to be added in the attribute table of voronoi output shapefile
+        list_attribute_title = [
+            str(aftertime_df.columns[ii])
+            for ii in range(len(aftertime_df.columns))
+            if 'Unnamed: 0' != aftertime_df.columns[ii]
+            if 'latitude' != aftertime_df.columns[ii]
+            if 'longitude' != aftertime_df.columns[ii]
+            ]
+
+        with fiona.collection(output_point_fullpath,'w', 'ESRI Shapefile', outSchema,crs) as output:
+            for point in point_two_country:
+                attribute_each_record = {}
+                is_same_lat = aftertime_df.latitude == point.y
+                is_same_lon = aftertime_df.longitude == point.x
+                try:
+                    for ii in list_attribute_title:
+                        value = str(aftertime_df[is_same_lat & is_same_lon].head(1)[ii].values[0])
+                        attribute_each_record[ii] = value
+                except:
+                    # continue if point is one of points used to wrap voronoi polygon E.G.(5000, 5000), (
+                    continue
+                output.write({
+                    'properties': attribute_each_record,
+                    'geometry': mapping(point)
+                })
+        print output_point_fullpath + 'is created'
+
+
+
+
+
+
 
 
 
