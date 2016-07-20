@@ -86,6 +86,43 @@ The Python way mentioned above also works here.
 
 
 '''
+
+
+
+
+'''
+please revise input parameter below
+'''
+__level1_fullpath = '/Users/EugeneWang/Desktop/AidData/Spatial Voronoi/spatial-voronoi/TimorLesteAIMS_GeocodedResearchRelease_Level1_v1.4.1/data/level_1a.csv'
+__boundary_fullpath = '/Users/EugeneWang/Desktop/AidData/project1/TimorLesteAIMS_GeocodedResearchRelease_Level1_v1.4.1/TLS_adm_shp/TLS_adm0.shp'
+#__output_polygon_fullpath = '/Users/EugeneWang/Desktop/AidData/Spatial Voronoi/spatial-voronoi/USA vs others_new/'
+__output_polygon_fullpath = 'TEST_hightlight_USA_06_08.shp'
+#__output_point_fullpath = '/Users/EugeneWang/Desktop/AidData/Spatial Voronoi/spatial-voronoi/USA vs others_points_new'
+__output_point_fullpath = 'Test_highlight_USA_06_08_point.shp'
+
+# if setting csv file is default
+__attribute_csv_fullpath = 'default'
+
+# if dict_filter remain {}, no record will be filtered.
+# __dict_filter is for fields that is not related to time(eg. starting time, ending time)
+__dict_filter = {}
+#__dict_filter['donors_iso3'] = 'USA'
+#__dict_filter['ad_sector_codes'] = 311
+
+
+__time_filter = {}
+__time_filter['example'] = {'start_actual_isodate':2006, 'end_actual_isodate':2010}
+
+__voronoi_mode = 2
+
+__allow_empty_time_record = False
+'''
+please revise input parameter above.
+'''
+# for pair-wise mode:
+__comparing_country_iso = 'USA'
+
+
 level1_fullpath = None
 boundary_fullpath = None
 output_polygon_fullpath = None
@@ -103,38 +140,18 @@ time_filter = None
 comparing_country_iso = None
 
 
-
-'''
-please revise input parameter below
-'''
-__level1_fullpath = '/Users/EugeneWang/Desktop/AidData/Spatial Voronoi/spatial-voronoi/TimorLesteAIMS_GeocodedResearchRelease_Level1_v1.4.1/data/level_1a.csv'
-__boundary_fullpath = '/Users/EugeneWang/Desktop/AidData/project1/TimorLesteAIMS_GeocodedResearchRelease_Level1_v1.4.1/TLS_adm_shp/TLS_adm0.shp'
-__output_polygon_fullpath = 'TEST_USA.shp'
-__output_point_fullpath = 'Test_USA_point.shp'
-
-# if setting csv file is default
-__attribute_csv_fullpath = 'default'
-
-# if dict_filter remain {}, no record will be filtered.
-# __dict_filter is for fields that is not related to time(eg. starting time, ending time)
-__dict_filter = {}
-__dict_filter['donors_iso3'] = 'USA'
-# __dict_filter['ad_sector_codes'] = 311
-
-
-__time_filter = {}
-# __time_filter['example'] = {'start':2006, 'end':2010}
-
-__voronoi_mode = 0
-
-__allow_empty_time_record = False
-'''
-please revise input parameter above.
-'''
-__comparing_country_iso = ''
-
-
 def load_input():
+    global level1_fullpath
+    global boundary_fullpath
+    global output_polygon_fullpath
+    global output_point_fullpath
+    global attribute_csv_fullpath
+    global dict_filter
+    global time_filter
+    global allow_empty_time_record
+    global comparing_country_iso
+    global voronoi_mode
+
     try:
         level1_fullpath = str(__level1_fullpath)
         boundary_fullpath = str(__boundary_fullpath)
@@ -165,7 +182,6 @@ def load_input():
             comparing_country_iso = str(__comparing_country_iso)
     except:
         raise ImportError('Please check __comparing_counties_iso has been inputted properly under instruction.')
-
 
 
 

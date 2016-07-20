@@ -230,10 +230,10 @@ def get_condition_key(value_filter, key_filter, input_dfadd):
         condition_key = stack_condition
     elif type(value_filter) is dict:
         # list a time span in the filter to limit the records.
-        start_year = value_filter.values[0]
-        end_year = value_filter.values[1]
-        start_field = value_filter.keys[0]
-        end_field = value_filter.keys[1]
+        start_year = value_filter.values()[0]
+        end_year = value_filter.values()[1]
+        start_field = value_filter.keys()[0]
+        end_field = value_filter.keys()[1]
 
         input_df[start_field] = pd.to_datetime(input_df[start_field])
         input_df[end_field] = pd.to_datetime(input_df[end_field])
@@ -390,10 +390,12 @@ output: none
 '''
 def create_folder(dirname):
     if os.path.exists(dirname):
-        dirname = dirname+'_new'
-        create_folder(dirname)
+        dirname = dirname + '_new'
+        dirname = create_folder(dirname)
     else:
         os.mkdir(dirname)
+        return dirname
+    return dirname
 #####################################################################################################################
 '''
 This function is executed only when this script will be run directly.
@@ -534,7 +536,9 @@ def highlight_mode():
 
     list_clipped_polygon = get_clipped_voronoi(boundary_address, list_points_origional)
 
-    request_df = aggregate_lv1_by_location(input_address, setcsv_fullpath, dict_filter)
+    # plus attribute filter right now.
+    filter_both = merge_two_dicts(timefilter, dict_filter)
+    request_df = aggregate_lv1_by_location(input_address, setcsv_fullpath, filter_both)
 
     requested_lon_lat = request_df.loc[:,['longitude', 'latitude']].values
     list_requested_points = list(MultiPoint(requested_lon_lat).geoms)
@@ -557,6 +561,8 @@ def highlight_mode():
     outSchema['properties']['requested'] = 'int'
     outSchema['properties']['att_fil'] = 'str'
     outSchema['properties']['time_fil'] = 'str'
+    for i in list_attribute_title:
+        outSchema['properties'][i] = 'str'
 
     # use WGS 84 , longlat , the kind of global use of Coordinate Reference System
     crs = from_epsg(4326)
@@ -613,7 +619,7 @@ def pairwise_mode():
     setcsv_fullpath = AutoVoronoi_config.attribute_csv_fullpath
     timefilter = AutoVoronoi_config.time_filter
 
-    comparing_country = AutoVoronoi_config.comparing_countries_iso
+    comparing_country = AutoVoronoi_config.comparing_country_iso
 
 #######################################################################
     all_dict = merge_two_dicts(dict_filter, timefilter)
@@ -633,28 +639,34 @@ def pairwise_mode():
         # exclude comparing countries in it.
         if i == comparing_country:
             continue
-        list_donors.append(i)
+        list_others.append(i)
     filter_others['donors_iso3'] = filter_others
 
     if not os.path.isdir(output_polygon_name):
         dirname = comparing_country +' vs others'
-        create_folder(dirname)
+        dirname = create_folder(dirname)
         output_polygon_name = os.getcwd()+'/' + dirname + '/'
         print 'output polygon path is not a folder, polygon output has been placed in '+ output_polygon_name
 
     if not os.path.isdir(output_point_name):
         dirname = comparing_country + ' vs others_points'
-        create_folder(dirname)
+        dirname = create_folder(dirname)
         output_point_name = os.getcwd()+'/' + dirname + '/'
         print 'output point path is not a folder, point output has been placed in ' + output_point_name
 
     #loop each other donor
     for other in list_others:
         #get selection of records of conflicting areas and none conflicting areas
+        # records donated by one of the other countries
         condition_other = aftertime_df['donors_iso3'].str.contains(str(other), na=False)
+        # records donated by the comparing country
         condition_comparing = aftertime_df['donors_iso3'].str.contains(str(comparing_country), na= False)
+        # records donated by the both countries
         condition_conflict = condition_other & condition_comparing
-        condition_non_conconflict = (condition_other | condition_conflict) & (~condition_conflict)
+        condition_both = condition_comparing | condition_other
+        condition_against_conflict = ~condition_conflict
+        # records
+        condition_non_conconflict = condition_both & condition_against_conflict
 
 
         df_two_country = aftertime_df[condition_other | condition_comparing]
@@ -679,9 +691,11 @@ def pairwise_mode():
             if 'longitude' != aftertime_df.columns[ii]
             ]
 
-        outSchema['properties']['vs_status_code'] = 'int'
+        outSchema['properties']['vs_code'] = 'int'
         outSchema['properties']['vs_status'] = 'str'
         outSchema['properties']['donor_iso'] = 'str'
+        for i in list_attribute_title:
+            outSchema['properties'][i] = 'str'
 
         # use WGS 84 , longlat , the kind of global use of Coordinate Reference System
         crs = from_epsg(4326)
@@ -704,7 +718,7 @@ def pairwise_mode():
                 for point in point_noncon_compare:
                     if point.within(polygon):
                         # 0 for non-conflicting
-                        attribute_each_record['vs_status_code'] = 0
+                        attribute_each_record['vs_code'] = 0
                         attribute_each_record['vs_status'] = 'non-conflicting'
                         attribute_each_record['donor_iso'] = comparing_country
 
@@ -736,7 +750,7 @@ def pairwise_mode():
                 for point in point_noncon_other:
                     if point.within(polygon):
                         # 0 for non-conflicting
-                        attribute_each_record['vs_status_code'] = 0
+                        attribute_each_record['vs_code'] = 0
                         attribute_each_record['vs_status'] = 'non-conflicting'
                         attribute_each_record['donor_iso'] = other
 
@@ -766,7 +780,7 @@ def pairwise_mode():
                 for point in point_con:
                     if point.within(polygon):
                         # 0 for non-conflicting
-                        attribute_each_record['vs_status_code'] = 1
+                        attribute_each_record['vs_code'] = 1
                         attribute_each_record['vs_status'] = 'conflicting'
                         attribute_each_record['donor_iso'] = other + '|' +comparing_country
 
@@ -791,7 +805,7 @@ def pairwise_mode():
                 if is_att_assign:
                     continue
                 else:
-                    attribute_each_record['vs_status_code'] = -1
+                    attribute_each_record['vs_code'] = -1
                     attribute_each_record['vs_status'] = 'void'
                     attribute_each_record['donor_iso'] = 'void'
                     for ii in list_attribute_title:
@@ -802,9 +816,9 @@ def pairwise_mode():
                         'geometry': mapping(polygon)
                     })
 
-        print output_polygon_fullpath + 'is created'
+        print output_polygon_fullpath + ' is created'
 
-        outSchema = {'geometry': 'Polygon', 'properties': {}}
+        outSchema = {'geometry': 'Point', 'properties': {}}
 
         # some title has been excluded to be added in the attribute table of voronoi output shapefile
         list_attribute_title = [
@@ -814,6 +828,9 @@ def pairwise_mode():
             if 'latitude' != aftertime_df.columns[ii]
             if 'longitude' != aftertime_df.columns[ii]
             ]
+
+        for i in list_attribute_title:
+            outSchema['properties'][i] = 'str'
 
         with fiona.collection(output_point_fullpath,'w', 'ESRI Shapefile', outSchema,crs) as output:
             for point in point_two_country:
@@ -831,7 +848,7 @@ def pairwise_mode():
                     'properties': attribute_each_record,
                     'geometry': mapping(point)
                 })
-        print output_point_fullpath + 'is created'
+        print output_point_fullpath + ' is created'
 
 
 
@@ -845,7 +862,8 @@ def pairwise_mode():
 
 # make sure only run this script directly will have all functions work
 
-if __name__ ==  '__main__':
+if __name__ == '__main__':
+    AutoVoronoi_config.load_input()
     if AutoVoronoi_config.voronoi_mode == 0:
         main()
     elif AutoVoronoi_config.voronoi_mode == 1:
