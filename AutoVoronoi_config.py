@@ -25,6 +25,12 @@ For example, to set up the input path of level 1 data, just revise __level1_full
     PS: For pair-wise mode, please indicate an existing folder as fullpath. Otherwise, all files will be placed in a new
     folder under the folder where the running script and this this file are.
 
+    For example:
+        for pair-wise mode, this fullpath should be set up like this below :
+            _output_polygon_fullpath = '/Users/EugeneWang/Desktop/AidData/Spatial Voronoi/spatial-voronoi/USA vs others_new/'
+        for other modes, this fullpath variable should be like this below :
+            __boundary_fullpath = '/Users/EugeneWang/Desktop/AidData/project1/TimorLesteAIMS_GeocodedResearchRelease_Level1_v1.4.1/TLS_adm_shp/TLS_adm0.shp'
+
 4. output_point_fullpath: the point version of output_point_fullpath
 
 5. attribute_csv_fullpath: allows you to set up the fullpath, a string value, of a setting csv file.
