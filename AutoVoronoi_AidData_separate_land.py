@@ -106,9 +106,9 @@ def aggregate_lv1_by_location(input_address, setting_csv_address = 'default', fi
 
     # create the dataframe with all rows of information about positions
     cleaned_data = pd.DataFrame(list_rows)
-    csvfile_name = 'filtered_aggregated_data_all.csv'
-    cleaned_data.to_csv(csvfile_name, encoding='utf-8')
-    print ('information has been aggregated to ' + csvfile_name)
+    # csvfile_name = 'filtered_aggregated_data_all.csv'
+    # cleaned_data.to_csv(csvfile_name, encoding='utf-8')
+    # print ('information has been aggregated to ' + csvfile_name)
 
     return cleaned_data
 '''
