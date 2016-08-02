@@ -654,7 +654,7 @@ def pairwise_mode():
         output_point_name = os.getcwd()+'/' + dirname + '/'
         print 'output point path is not a folder, point output has been placed in ' + output_point_name
 
-    #loop each other donor
+    #loop each other donor, each shapefile will be produced for each comparision between other donor and comparing donor
     for other in list_others:
         #get selection of records of conflicting areas and none conflicting areas
         # records donated by one of the other countries
@@ -692,8 +692,13 @@ def pairwise_mode():
             ]
 
         outSchema['properties']['vs_code'] = 'int'
+        # 0 - the region only occupied by comparing donor, 1 - by both, conflicting
+        # -1 - void, not occupied by none of the donors
+        # 2 - occupied by the other country
         outSchema['properties']['vs_status'] = 'str'
         outSchema['properties']['donor_iso'] = 'str'
+        outSchema['properties']['watch_iso'] = 'str'
+
         for i in list_attribute_title:
             outSchema['properties'][i] = 'str'
 
@@ -721,6 +726,7 @@ def pairwise_mode():
                         attribute_each_record['vs_code'] = 0
                         attribute_each_record['vs_status'] = 'non-conflicting'
                         attribute_each_record['donor_iso'] = comparing_country
+                        attribute_each_record['watch_iso'] = comparing_country
 
                         is_same_lat = aftertime_df.latitude == point.y
                         is_same_lon = aftertime_df.longitude == point.x
@@ -750,9 +756,11 @@ def pairwise_mode():
                 for point in point_noncon_other:
                     if point.within(polygon):
                         # 0 for non-conflicting
-                        attribute_each_record['vs_code'] = 0
+                        attribute_each_record['vs_code'] = 2
                         attribute_each_record['vs_status'] = 'non-conflicting'
                         attribute_each_record['donor_iso'] = other
+                        attribute_each_record['watch_iso'] = comparing_country
+
 
                         is_same_lat = aftertime_df.latitude == point.y
                         is_same_lon = aftertime_df.longitude == point.x
@@ -781,7 +789,7 @@ def pairwise_mode():
                     if point.within(polygon):
                         # 0 for non-conflicting
                         attribute_each_record['vs_code'] = 1
-                        attribute_each_record['vs_status'] = 'conflicting'
+
                         attribute_each_record['donor_iso'] = other + '|' +comparing_country
 
                         is_same_lat = aftertime_df.latitude == point.y
@@ -801,11 +809,9 @@ def pairwise_mode():
 
                 if is_att_assign:
                     continue
-
-                if is_att_assign:
-                    continue
                 else:
                     attribute_each_record['vs_code'] = -1
+                    attribute_each_record['vs_status'] = 'void'
                     attribute_each_record['vs_status'] = 'void'
                     attribute_each_record['donor_iso'] = 'void'
                     for ii in list_attribute_title:
