@@ -1,5 +1,9 @@
 """
 READ ME:
+
+This is a configuration file for AutoVoronoi_AidData_seperate_land.py.
+After setting up parameters at here, please run that script instead of this.
+
 Please read the following description before editing configuration parameters down below
 
 * Please keep this configuration placed in the same folder with AutoVoronoi_AidData_seperate_land.py and
