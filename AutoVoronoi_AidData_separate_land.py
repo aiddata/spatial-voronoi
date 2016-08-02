@@ -15,7 +15,6 @@ import shapely.ops
 import datetime
 import AutoVoronoi_config
 
-
 '''
 # function 1: aggregate_lv1_by_location()
 # description: Aggregate records from level1 by location
@@ -698,7 +697,6 @@ def pairwise_mode():
         # 2 - occupied by the other country
         outSchema['properties']['vs_status'] = 'str'
         outSchema['properties']['donor_iso'] = 'str'
-        outSchema['properties']['watch_iso'] = 'str'
 
         for i in list_attribute_title:
             outSchema['properties'][i] = 'str'
@@ -727,7 +725,6 @@ def pairwise_mode():
                         attribute_each_record['vs_code'] = 0
                         attribute_each_record['vs_status'] = 'non-conflicting'
                         attribute_each_record['donor_iso'] = comparing_country
-                        attribute_each_record['watch_iso'] = comparing_country
 
                         is_same_lat = aftertime_df.latitude == point.y
                         is_same_lon = aftertime_df.longitude == point.x
@@ -760,7 +757,6 @@ def pairwise_mode():
                         attribute_each_record['vs_code'] = 2
                         attribute_each_record['vs_status'] = 'non-conflicting'
                         attribute_each_record['donor_iso'] = other
-                        attribute_each_record['watch_iso'] = comparing_country
 
 
                         is_same_lat = aftertime_df.latitude == point.y
