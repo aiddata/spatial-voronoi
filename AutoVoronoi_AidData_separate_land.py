@@ -786,7 +786,7 @@ def pairwise_mode():
                     if point.within(polygon):
                         # 0 for non-conflicting
                         attribute_each_record['vs_code'] = 1
-
+                        attribute_each_record['vs_status'] = 'conflicting'
                         attribute_each_record['donor_iso'] = other + '|' +comparing_country
 
                         is_same_lat = aftertime_df.latitude == point.y
@@ -808,7 +808,6 @@ def pairwise_mode():
                     continue
                 else:
                     attribute_each_record['vs_code'] = -1
-                    attribute_each_record['vs_status'] = 'void'
                     attribute_each_record['vs_status'] = 'void'
                     attribute_each_record['donor_iso'] = 'void'
                     for ii in list_attribute_title:
