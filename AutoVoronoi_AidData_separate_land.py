@@ -2,6 +2,7 @@
 Author: Eugene Wang
 This code can be found in this Github Address: https://github.com/itpir/spatial-voronoi
 Established at Jul 8 2016. Inherited from AutoVoronoi_AidData.py
+Latest Update: August 2, 2016
 """
 import pandas as pd
 import numpy as np
@@ -13,7 +14,6 @@ from fiona.crs import from_epsg
 import shapely.ops
 import datetime
 import AutoVoronoi_config
-
 
 '''
 # function 1: aggregate_lv1_by_location()
@@ -106,9 +106,9 @@ def aggregate_lv1_by_location(input_address, setting_csv_address = 'default', fi
 
     # create the dataframe with all rows of information about positions
     cleaned_data = pd.DataFrame(list_rows)
-    csvfile_name = 'filtered_aggregated_data_all.csv'
-    cleaned_data.to_csv(csvfile_name, encoding='utf-8')
-    print ('information has been aggregated to ' + csvfile_name)
+    # csvfile_name = 'filtered_aggregated_data_all.csv'
+    # cleaned_data.to_csv(csvfile_name, encoding='utf-8')
+    # print ('information has been aggregated to ' + csvfile_name)
 
     return cleaned_data
 '''
@@ -654,7 +654,7 @@ def pairwise_mode():
         output_point_name = os.getcwd()+'/' + dirname + '/'
         print 'output point path is not a folder, point output has been placed in ' + output_point_name
 
-    #loop each other donor
+    #loop each other donor, each shapefile will be produced for each comparision between other donor and comparing donor
     for other in list_others:
         #get selection of records of conflicting areas and none conflicting areas
         # records donated by one of the other countries
@@ -692,8 +692,12 @@ def pairwise_mode():
             ]
 
         outSchema['properties']['vs_code'] = 'int'
+        # 0 - the region only occupied by comparing donor, 1 - by both, conflicting
+        # -1 - void, not occupied by none of the donors
+        # 2 - occupied by the other country
         outSchema['properties']['vs_status'] = 'str'
         outSchema['properties']['donor_iso'] = 'str'
+
         for i in list_attribute_title:
             outSchema['properties'][i] = 'str'
 
@@ -750,9 +754,10 @@ def pairwise_mode():
                 for point in point_noncon_other:
                     if point.within(polygon):
                         # 0 for non-conflicting
-                        attribute_each_record['vs_code'] = 0
+                        attribute_each_record['vs_code'] = 2
                         attribute_each_record['vs_status'] = 'non-conflicting'
                         attribute_each_record['donor_iso'] = other
+
 
                         is_same_lat = aftertime_df.latitude == point.y
                         is_same_lon = aftertime_df.longitude == point.x
@@ -798,9 +803,6 @@ def pairwise_mode():
                         break
                     else:
                         continue
-
-                if is_att_assign:
-                    continue
 
                 if is_att_assign:
                     continue

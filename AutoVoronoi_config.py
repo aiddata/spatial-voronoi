@@ -1,5 +1,9 @@
 """
 READ ME:
+
+This is a configuration file for AutoVoronoi_AidData_seperate_land.py.
+After setting up parameters at here, please run that script instead of this.
+
 Please read the following description before editing configuration parameters down below
 
 * Please keep this configuration placed in the same folder with AutoVoronoi_AidData_seperate_land.py and
@@ -105,7 +109,7 @@ For example, to set up the input path of level 1 data, just revise __level1_full
 '''
 please revise input parameter below
 '''
-__level1_fullpath = '/Users/EugeneWang/Desktop/AidData/Spatial Voronoi/spatial-voronoi/TimorLesteAIMS_GeocodedResearchRelease_Level1_v1.4.1/data/level_1a.csv'
+__level1_fullpath = '/Users/EugeneWang/Desktop/AidData/project1/TimorLesteAIMS_GeocodedResearchRelease_Level1_v1.4.1/data/level_1a.csv'
 __boundary_fullpath = '/Users/EugeneWang/Desktop/AidData/project1/TimorLesteAIMS_GeocodedResearchRelease_Level1_v1.4.1/TLS_adm_shp/TLS_adm0.shp'
 #_output_polygon_fullpath = '/Users/EugeneWang/Desktop/AidData/Spatial Voronoi/spatial-voronoi/USA vs others_new/'
 __output_polygon_fullpath = 'TEST_hightlight_USA_06_08.shp'
