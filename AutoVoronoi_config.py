@@ -104,19 +104,18 @@ For example, to set up the input path of level 1 data, just revise __level1_full
     This field is a must if the voronoi mode is pair-wise (AKA, if voronoi_mode = 2)
 
 """
-
+import matplotlib.pyplot as plt
+import re
+import binascii
 
 '''
 please revise input parameter below
 '''
 __level1_fullpath = '/Users/EugeneWang/Desktop/AidData/project1/TimorLesteAIMS_GeocodedResearchRelease_Level1_v1.4.1/data/level_1a.csv'
 __boundary_fullpath = '/Users/EugeneWang/Desktop/AidData/project1/TimorLesteAIMS_GeocodedResearchRelease_Level1_v1.4.1/TLS_adm_shp/TLS_adm0.shp'
-#_output_polygon_fullpath = '/Users/EugeneWang/Desktop/AidData/Spatial Voronoi/spatial-voronoi/USA vs others_new/'
-__output_polygon_fullpath = 'TEST_hightlight_USA_06_08.shp'
-#_output_point_fullpath = '/Users/EugeneWang/Desktop/AidData/Spatial Voronoi/spatial-voronoi/USA vs others_points_new/'
+__output_polygon_fullpath = 'TEST_hightlight_USA_06_08.shp' # for pair-wise mode, these two output parameter should be fullpaths of folder.
 __output_point_fullpath = 'Test_highlight_USA_06_08_point.shp'
-# if setting csv file is default
-__attribute_csv_fullpath = 'default'
+__attribute_csv_fullpath = 'default' # or specific fullpath if using customized csv file
 
 # if dict_filter remain {}, no record will be filtered.
 # __dict_filter is for fields that is not related to time(eg. starting time, ending time)
@@ -132,6 +131,17 @@ __allow_empty_time_record = False
 
 # for pair-wise mode:
 __comparing_country_iso = 'USA'
+__hex_color_comparing_country = '#ffffbf'
+__hex_color_other_country = '#91cf60'       # other country is the one against comparing country in comparision
+__hex_color_conflicting = '#fc8d59'
+__hex_color_void = '#000000'                # void regions are regions which should be considered seperately have no record on them.
+
+# for basemap or picture:
+__basemap_switch = True
+__land_hex_color = '#A7A7A7'
+__water_hex_color = '#DFDFDE'
+__output_pic_format = 'JPG'
+
 '''
 please revise input parameter above.
 '''
@@ -153,6 +163,24 @@ dict_filter = None
 time_filter = None
 # pairwise mode must have this input below
 comparing_country_iso = None
+color_dict = None
+output_pic_format = None
+basemap_switch = None
+
+
+def is_hex(hex_str):
+    try:
+        parse_hex(hex_str)
+    except Exception as e:
+        return False
+    else:
+        return True
+
+
+def parse_hex(hex_str):
+    if not hex_str.startswith('#'):
+        raise ValueError('A bgcolor must start with a "#"')
+    return binascii.unhexlify(hex_str[1:])
 
 
 def load_input():
@@ -166,6 +194,9 @@ def load_input():
     global allow_empty_time_record
     global comparing_country_iso
     global voronoi_mode
+    global color_dict
+    global output_pic_format
+    global basemap_switch
 
     try:
         level1_fullpath = str(__level1_fullpath)
@@ -197,6 +228,42 @@ def load_input():
             comparing_country_iso = str(__comparing_country_iso)
     except:
         raise ImportError('Please check __comparing_counties_iso has been inputted properly under instruction.')
+
+    color_dict = {}
+    if voronoi_mode == 2:
+        # validate hex
+        list_pairwise_hex = []
+        list_pairwise_hex.append(__hex_color_comparing_country)
+        list_pairwise_hex.append(__hex_color_other_country)
+        list_pairwise_hex.append(__hex_color_conflicting)
+        list_pairwise_hex.append(__hex_color_void)
+
+        valid_pairwise_hex = [is_hex(each_color) for each_color in list_pairwise_hex]
+
+        if False in valid_pairwise_hex:
+            raise ValueError('Color specification should use hex code to specify color.')
+        else:
+            color_dict['pairwise'] = list_pairwise_hex
+
+    if is_hex(__land_hex_color):
+        if is_hex(__water_hex_color):
+            color_dict['basemap'] = [__land_hex_color, __water_hex_color]
+        else:
+            raise ValueError('Color specification should use hex code to specify color.')
+    else:
+        raise ValueError('Color specification should use hex code to specify color.')
+
+    # validate picture format
+    fig = plt.figure()
+    # parse any possible annotation
+    parsed_ext = re.split("[^a-zA-Z]*", __output_pic_format)[-1] # find out only letters
+    support_dict = fig.canvas.get_supported_filetypes()
+    if parsed_ext.lower() in support_dict.keys():
+        output_pic_format = __output_pic_format.lower()
+    else:
+        raise ValueError('Output picture format is not supported.')
+
+
 
 
 

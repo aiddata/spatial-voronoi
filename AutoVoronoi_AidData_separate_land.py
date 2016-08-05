@@ -7,14 +7,22 @@ Latest Update: August 2, 2016
 import pandas as pd
 import numpy as np
 import os
-from shapely.geometry import LineString, MultiPoint, mapping, shape
+from mpl_toolkits.basemap import Basemap # fiona or shapely should be imported after Basemap, otherwise there will be error
+from shapely.geometry import LineString, MultiPoint, mapping, shape, Polygon
 from scipy.spatial import Voronoi
 import fiona
 from fiona.crs import from_epsg
 import shapely.ops
 import datetime
-import AutoVoronoi_config
+from descartes import PolygonPatch
+from matplotlib.colors import ListedColormap
+from matplotlib.collections import PatchCollection
+import matplotlib.cm as cm
+import matplotlib.pyplot as plt
+from itertools import chain
 
+
+import AutoVoronoi_config
 '''
 # function 1: aggregate_lv1_by_location()
 # description: Aggregate records from level1 by location
@@ -396,6 +404,161 @@ def create_folder(dirname):
         os.mkdir(dirname)
         return dirname
     return dirname
+
+'''
+function 5: map_generate()
+description: generate a map with given shapefile and other parameters.
+input: voronoi_mode, shp_fullpath, color_dict, format
+output: pic_fullpath
+'''
+def map_generate(shp_fullpath):
+    voronoi_mode = AutoVoronoi_config.voronoi_mode
+    color_dict = AutoVoronoi_config.color_dict
+    format = AutoVoronoi_config.output_pic_format
+
+    if voronoi_mode == 2: # for pair-wise mode
+        input_fullpath = shp_fullpath
+        fieldname_on_legend = 'donor_iso'
+
+        input_name, input_ext = os.path.splitext(input_fullpath)
+
+        figure = plt.figure()
+        ax = figure.add_subplot(111, axisbg='w', frame_on=False)
+
+        shp = fiona.open(input_fullpath)
+        bds = shp.bounds
+        shp.close()
+        extra = 0.01
+        ll = (bds[0], bds[1])  # lower left point
+        ur = (bds[2], bds[3])  # upper right point
+        coords = list(chain(ll, ur))
+        w, h = coords[2] - coords[0], coords[3] - coords[1]
+
+    cen_lat = (coords[1] + coords[3]) / 2
+    cen_lon = (coords[0] + coords[2]) / 2
+
+    m = Basemap(
+        projection='tmerc',
+        lon_0=cen_lon,
+        lat_0=cen_lat,
+        ellps='WGS84',
+        llcrnrlon=coords[0] - extra * w,
+        llcrnrlat=coords[1] - extra + 0.01 * h,
+        urcrnrlon=coords[2] + extra * w,
+        urcrnrlat=coords[3] + extra + 0.01 * h,
+        lat_ts=0,
+        resolution='i',
+        suppress_ticks=True,
+        ax=ax)
+
+    if(AutoVoronoi_config.basemap_switch):
+
+        dict_color = AutoVoronoi_config.color_dict
+        land_color = dict_color.get('basemap')[0]
+        water_color = dict_color.get('basemap')[1]
+
+        # draw ocean
+        m.drawmapboundary(fill_color=water_color)
+        # draw lands and waters
+        m.fillcontinents(color=land_color, lake_color=water_color, zorder=0)
+
+    m.readshapefile(
+        input_name,
+        'polygon_voronoi',
+        color='none',
+        default_encoding='utf-8'
+        # zorder=2
+    )
+
+    # set up a map dataframe, and extract attribute from shapefile
+    dict_df = {
+        'poly': [Polygon(xy) for xy in m.polygon_voronoi],
+        fieldname_on_legend: [attribute[fieldname_on_legend] for attribute in m.polygon_voronoi_info],
+        'vs_code': [int(attribute['vs_code']) for attribute in m.polygon_voronoi_info]}
+    df_map = pd.DataFrame(dict_df)
+
+    # how many classes are needed?
+    n = len(set(df_map[fieldname_on_legend].tolist()))
+
+    # patches converted with grey color.
+    df_map['patches'] = df_map['poly'].map(lambda x: PolygonPatch(x, ec='#555555', lw=.2, alpha=1., zorder=4))
+
+    # customize color map, only two/three kind of colors + color for void property. To highlight the conflict
+    statuses = [0, 2, 1, -1]  # A, B, conflict, void
+    # color list of A country, B country, conflicting, void, has a corresponding order to statuses list.
+    colors = color_dict.get('pairwise')
+
+    # loop throught status and color,
+    # set color to regions based on vs_code
+    # A or B, or conflict or void.
+    for status, color in zip(statuses, colors):
+        is_eachstatus = df_map.vs_code == status
+        df_eachstatus = df_map[is_eachstatus]
+        # valid each status to see if it exist in this shapefile. Delete the ones not exist
+        if len(df_eachstatus) == 0:
+            index = colors.index(color)
+            colors.pop(index)
+            statuses.pop(index)
+            continue
+        pc = PatchCollection(df_eachstatus['patches'], match_original=True)
+        pc.set_facecolor(color)  # set color
+        ax.add_collection(pc)  # add to the axis of figure
+
+    cmap = ListedColormap(colors, name='For Pair-wise comparision', N=n)
+
+    # for legend:
+
+    list_legendlabels = []
+    # get the correspondent title with vs_code
+    for code in statuses:
+        find_correspondant = df_map.vs_code == int(code)
+        df_eachcode = df_map[find_correspondant]
+        list_title = list(set(df_eachcode[fieldname_on_legend].tolist()))  # get country code(s) which should be unique
+        # if len(list_title) == N
+        title = list_title[0]
+        list_legendlabels.append(title)
+    # till now, statuses share the correspondent order with list_legendtitle.
+
+    # add a color bar
+    cb = create_colorbar(list_legendlabels, statuses, colors, cmap, shrink=0.3)
+    cb.ax.tick_params(labelsize=6)
+
+    # add title
+    title = list_legendlabels[0] + ' and ' + list_legendlabels[1] + ' Voronoi Surface'
+    plt.title(title)
+
+    # create a subfolder if their is not
+    parent_dir = os.path.dirname(input_fullpath)
+    subfolder_path = parent_dir + '/pic/'
+    if not os.path.isdir(subfolder_path):
+        create_folder(subfolder_path)
+
+    # make it the name as same as shapefile output
+    shpfile_name = os.path.basename(input_fullpath) #eg. 'abc.shp'
+    shpfile_name_noext = os.path.splitext(shpfile_name)[0] # 'abc'
+    output_name= subfolder_path+shpfile_name_noext # '.../pic/abc'
+    outputpath = ".".join((output_name, AutoVoronoi_config.output_pic_format)) # '.../pic/abc.ext'
+    plt.savefig(outputpath, dpi=300, alpha=True)
+
+    return outputpath
+
+'''
+function 5.1: create_colorbar()
+description: generate a color bar as legend with lists corespondant to each other.
+input: list_label(labels for legend, each value inside response to values in list_color and list_status),
+    list_color()
+'''
+def create_colorbar(list_label, list_status, list_color, cmap, **kwargs):
+    ncolors = len(list_color)
+    mappable = cm.ScalarMappable(cmap=cmap)
+    mappable.set_array([])
+    mappable.set_clim(-0.5, ncolors + 0.5)
+    colorbar = plt.colorbar(mappable, **kwargs)
+    colorbar.set_ticks(np.linspace(0, ncolors, ncolors))
+    colorbar.set_ticklabels(range(ncolors))
+    if len(list_label):
+        colorbar.set_ticklabels(list_label)
+    return colorbar
 #####################################################################################################################
 '''
 This function is executed only when this script will be run directly.
@@ -819,7 +982,7 @@ def pairwise_mode():
                     })
 
         print output_polygon_fullpath + ' is created'
-
+        pic_fullpath = map_generate(output_polygon_fullpath)
         outSchema = {'geometry': 'Point', 'properties': {}}
 
         # some title has been excluded to be added in the attribute table of voronoi output shapefile
@@ -852,7 +1015,9 @@ def pairwise_mode():
                 })
         print output_point_fullpath + ' is created'
 
+'''
 
+'''
 
 
 

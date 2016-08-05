@@ -62,7 +62,9 @@ m = Basemap(
     suppress_ticks=True,
     ax=ax)
 
+#ocean color, optional
 m.drawmapboundary(fill_color='#DFDFDE')
+#ocean_color, optional
 m.fillcontinents(color='#A7A7A7', lake_color='#DFDFDE', zorder=0)
 
 # The options of resolution are c (crude, the default), l (low), i (intermediate), h (high), f (full) or None.
@@ -84,15 +86,15 @@ df_map = pd.DataFrame(dict_df)
 #df_map['area_km'] = df_map['area_m'] / 100000
 
 # how many classes are needed?
-#n = len(set(df_map[fieldname_on_legend].tolist()))
+n = len(set(df_map[fieldname_on_legend].tolist()))
 
 # patches converted with grey color.
 df_map['patches'] = df_map['poly'].map(lambda x: PolygonPatch(x, ec='#555555', lw=.2, alpha=1., zorder=4))
 
 # customize color map, only two/three kind of colors + color for void property. To highlight the conflict
 statuses = [0, 2, 1, -1] # A, B, conflict, void
+#optional
 colors = ['#ffffbf', '#91cf60', '#fc8d59', '#000000'] # A, B, conflicting, void
-cmap = ListedColormap(colors, name='For Pair-wise comparision', N=4)
 
 # loop throught status and color,
 # set color to regions based on vs_code
@@ -100,11 +102,17 @@ cmap = ListedColormap(colors, name='For Pair-wise comparision', N=4)
 for status, color in zip(statuses, colors):
     is_eachstatus = df_map.vs_code == status
     df_eachstatus = df_map[is_eachstatus]
+    # valid each status to see if it exist in this shapefile.
     if len(df_eachstatus) == 0:
+        index = colors.index(color)
+        colors.pop(index)
+        statuses.pop(index)
         continue
     pc = PatchCollection(df_eachstatus['patches'], match_original=True)
     pc.set_facecolor(color) # set color
     ax.add_collection(pc) # add to the axis of figure
+
+cmap = ListedColormap(colors, name='For Pair-wise comparision', N=n)
 
 
 # for legend:
@@ -114,7 +122,9 @@ list_legendlabels = []
 for code in statuses:
     find_correspondant = df_map.vs_code == int(code)
     df_eachcode = df_map[find_correspondant]
-    title = list(set(df_eachcode[fieldname_on_legend].tolist()))[0]
+    list_title = list(set(df_eachcode[fieldname_on_legend].tolist())) # get country code(s) which should be unique
+    #if len(list_title) == N
+    title = list_title[0]
     list_legendlabels.append(title)
 # till now, statuses share the correspondent order with list_legendtitle.
 
@@ -127,7 +137,7 @@ title = list_legendlabels[0] + ' and '+ list_legendlabels[1]+' Voronoi Surface'
 plt.title(title)
 
 # output picture
-outputpath = input_name+'.png'
+outputpath = input_name+'.jpg'
 plt.savefig(outputpath, dpi=300, alpha=True)
 
 plt.show()
