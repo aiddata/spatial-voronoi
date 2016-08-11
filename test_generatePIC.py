@@ -26,8 +26,8 @@ def create_colorbar(list_label, list_status, list_color, cmap, **kwargs):
 '''
 inputs are below.
 '''
-input_fullpath='/Users/EugeneWang/Desktop/AidData/Spatial Voronoi/spatial-voronoi/USA vs others_new_new/USA to AUS_voronoi.shp'
-fieldname_on_legend = 'donor_iso'
+input_fullpath='/Users/EugeneWang/Desktop/AidData/Spatial Voronoi/spatial-voronoi/USA vs others_new/USA to PRT_voronoi.shp'
+fieldname_on_legend = 'result_iso'
 '''
 inputs are above
 '''
@@ -80,7 +80,10 @@ m.readshapefile(
 dict_df = {
     'poly': [Polygon(xy) for xy in m.polygon_voronoi],
     fieldname_on_legend : [attribute[fieldname_on_legend] for attribute in m.polygon_voronoi_info],
-    'vs_code': [int(attribute['vs_code']) for attribute in m.polygon_voronoi_info]}
+    'vs_code': [int(attribute['vs_code']) for attribute in m.polygon_voronoi_info],
+    'cmp_iso': [str(attribute['cmp_iso']) for attribute in m.polygon_voronoi_info],
+    'other_iso': [str(attribute['other_iso']) for attribute in m.polygon_voronoi_info]
+}
 df_map = pd.DataFrame(dict_df)
 #df_map['area_m'] = df_map['poly'].map(lambda x: x.area)
 #df_map['area_km'] = df_map['area_m'] / 100000

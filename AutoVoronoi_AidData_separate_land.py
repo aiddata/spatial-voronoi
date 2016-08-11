@@ -7,7 +7,8 @@ Latest Update: August 2, 2016
 import pandas as pd
 import numpy as np
 import os
-from mpl_toolkits.basemap import Basemap # fiona or shapely should be imported after Basemap, otherwise there will be error
+from mpl_toolkits.basemap import Basemap
+# fiona or shapely should be imported after Basemap, otherwise there will be error
 from shapely.geometry import LineString, MultiPoint, mapping, shape, Polygon
 from scipy.spatial import Voronoi
 import fiona
@@ -418,7 +419,7 @@ def map_generate(shp_fullpath):
 
     if voronoi_mode == 2: # for pair-wise mode
         input_fullpath = shp_fullpath
-        fieldname_on_legend = 'donor_iso'
+        # DELETE THIS fieldname_on_legend = 'donor_iso'
 
         input_name, input_ext = os.path.splitext(input_fullpath)
 
@@ -473,12 +474,16 @@ def map_generate(shp_fullpath):
     # set up a map dataframe, and extract attribute from shapefile
     dict_df = {
         'poly': [Polygon(xy) for xy in m.polygon_voronoi],
-        fieldname_on_legend: [attribute[fieldname_on_legend] for attribute in m.polygon_voronoi_info],
-        'vs_code': [int(attribute['vs_code']) for attribute in m.polygon_voronoi_info]}
+        'vs_code': [int(attribute['vs_code']) for attribute in m.polygon_voronoi_info],
+        'cmp_iso': [str(attribute['cmp_iso']) for attribute in m.polygon_voronoi_info],
+        'other_iso': [str(attribute['other_iso']) for attribute in m.polygon_voronoi_info],
+        'result_iso': [str(attribute['result_iso']) for attribute in m.polygon_voronoi_info]
+    }
+
     df_map = pd.DataFrame(dict_df)
 
     # how many classes are needed?
-    n = len(set(df_map[fieldname_on_legend].tolist()))
+    n = len(set(df_map['vs_code'].tolist()))
 
     # patches converted with grey color.
     df_map['patches'] = df_map['poly'].map(lambda x: PolygonPatch(x, ec='#555555', lw=.2, alpha=1., zorder=4))
@@ -491,40 +496,51 @@ def map_generate(shp_fullpath):
     # loop throught status and color,
     # set color to regions based on vs_code
     # A or B, or conflict or void.
+    verified_statues = []
+    verified_colors = []
     for status, color in zip(statuses, colors):
         is_eachstatus = df_map.vs_code == status
         df_eachstatus = df_map[is_eachstatus]
         # valid each status to see if it exist in this shapefile. Delete the ones not exist
         if len(df_eachstatus) == 0:
-            index = colors.index(color)
-            colors.pop(index)
-            statuses.pop(index)
+            # index = colors.index(color)
+            # colors.pop(index)
+            # statuses.pop(index)
             continue
+        else:
+            verified_colors.append(color)
+            verified_statues.append(status)
+
+    for status, color in zip(verified_statues, verified_colors):
+        is_eachstatus = df_map.vs_code == status
+        df_eachstatus = df_map[is_eachstatus]
         pc = PatchCollection(df_eachstatus['patches'], match_original=True)
         pc.set_facecolor(color)  # set color
         ax.add_collection(pc)  # add to the axis of figure
 
-    cmap = ListedColormap(colors, name='For Pair-wise comparision', N=n)
+    cmap = ListedColormap(verified_colors, name='For Pair-wise comparision', N=n)
 
     # for legend:
 
     list_legendlabels = []
     # get the correspondent title with vs_code
-    for code in statuses:
+    for code in verified_statues:
         find_correspondant = df_map.vs_code == int(code)
         df_eachcode = df_map[find_correspondant]
-        list_title = list(set(df_eachcode[fieldname_on_legend].tolist()))  # get country code(s) which should be unique
+        list_title = list(set(df_eachcode['result_iso'].tolist()))  # get country code(s) which should be unique
         # if len(list_title) == N
         title = list_title[0]
         list_legendlabels.append(title)
     # till now, statuses share the correspondent order with list_legendtitle.
 
     # add a color bar
-    cb = create_colorbar(list_legendlabels, statuses, colors, cmap, shrink=0.3)
+    cb = create_colorbar(list_legendlabels, verified_statues, verified_colors, cmap, shrink=0.3)
     cb.ax.tick_params(labelsize=6)
 
     # add title
-    title = list_legendlabels[0] + ' and ' + list_legendlabels[1] + ' Voronoi Surface'
+    cmp_iso = list(set(df_map['cmp_iso'].tolist()))[0]
+    other_iso = list(set(df_map['other_iso'].tolist()))[0]
+    title = cmp_iso + ' and ' + other_iso + ' Voronoi Surface'
     plt.title(title)
 
     # create a subfolder if their is not
@@ -537,8 +553,9 @@ def map_generate(shp_fullpath):
     shpfile_name = os.path.basename(input_fullpath) #eg. 'abc.shp'
     shpfile_name_noext = os.path.splitext(shpfile_name)[0] # 'abc'
     output_name= subfolder_path+shpfile_name_noext # '.../pic/abc'
-    outputpath = ".".join((output_name, AutoVoronoi_config.output_pic_format)) # '.../pic/abc.ext'
+    outputpath = ".".join((output_name, format)) # '.../pic/abc.ext'
     plt.savefig(outputpath, dpi=300, alpha=True)
+    # plt.show()
 
     return outputpath
 
@@ -769,7 +786,29 @@ def highlight_mode():
                 })
 
 
+'''
+This mode is to highlight the difference between two countries.
+Output: shapefiles for each two combination between specified comparing country and all other countries possibily donating in the same place.
+        And the Picture of a simple map produced from each shapefile.
 
+shapefile attribute format:
+    vs_status : showing the status between two countries this region.
+    vs_code : a simple way to show the status.
+                0 - This region is not conflicting and it is donated by the comparing country.
+                1 - This region is conflicting. It is donated by both countries.
+                2 - This region is not conflicting and it is donated by the other country which is used to compare
+                    against the comparing country.
+                -1 - Void region. This region is not conflicting only because, on the record, both countries do not
+                    donate to this region.
+    cmp_iso : The iso code for the comparing country
+    other_iso : The iso code  for the other country comparing against the comparing country.
+    result_iso: For the comparing country and the other country, this field records if these two countries donate to the region.
+                if Both of them donate, countries ISO codes will be seperated by pipeline '|'.
+                If None of them donate, this will show as 'void'.
+    And flexible fields: this fields will be added under the setting configuration of a csv file.
+                This file contain a fixed title at the first line, and names of needed fields from Level 1 data.
+                These fields will be added to the attribute of shapefile as strings.
+'''
 def pairwise_mode():
     # check input parameter and load them
     output_polygon_name = AutoVoronoi_config.output_polygon_fullpath
@@ -854,12 +893,15 @@ def pairwise_mode():
             if 'longitude' != aftertime_df.columns[ii]
             ]
 
+        # adding special fields to output scheme.
         outSchema['properties']['vs_code'] = 'int'
         # 0 - the region only occupied by comparing donor, 1 - by both, conflicting
         # -1 - void, not occupied by none of the donors
         # 2 - occupied by the other country
         outSchema['properties']['vs_status'] = 'str'
-        outSchema['properties']['donor_iso'] = 'str'
+        outSchema['properties']['cmp_iso'] = 'str'
+        outSchema['properties']['other_iso'] = 'str'
+        outSchema['properties']['result_iso'] = 'str'
 
         for i in list_attribute_title:
             outSchema['properties'][i] = 'str'
@@ -887,7 +929,9 @@ def pairwise_mode():
                         # 0 for non-conflicting
                         attribute_each_record['vs_code'] = 0
                         attribute_each_record['vs_status'] = 'non-conflicting'
-                        attribute_each_record['donor_iso'] = comparing_country
+                        attribute_each_record['cmp_iso'] = comparing_country
+                        attribute_each_record['other_iso'] = other
+                        attribute_each_record['result_iso'] = comparing_country
 
                         is_same_lat = aftertime_df.latitude == point.y
                         is_same_lon = aftertime_df.longitude == point.x
@@ -919,7 +963,9 @@ def pairwise_mode():
                         # 0 for non-conflicting
                         attribute_each_record['vs_code'] = 2
                         attribute_each_record['vs_status'] = 'non-conflicting'
-                        attribute_each_record['donor_iso'] = other
+                        attribute_each_record['cmp_iso'] = comparing_country
+                        attribute_each_record['other_iso'] = other
+                        attribute_each_record['result_iso'] = other
 
 
                         is_same_lat = aftertime_df.latitude == point.y
@@ -950,7 +996,9 @@ def pairwise_mode():
                         # 0 for non-conflicting
                         attribute_each_record['vs_code'] = 1
                         attribute_each_record['vs_status'] = 'conflicting'
-                        attribute_each_record['donor_iso'] = other + '|' +comparing_country
+                        attribute_each_record['cmp_iso'] = comparing_country
+                        attribute_each_record['other_iso'] = other
+                        attribute_each_record['result_iso'] = other + '|' +comparing_country
 
                         is_same_lat = aftertime_df.latitude == point.y
                         is_same_lon = aftertime_df.longitude == point.x
@@ -972,7 +1020,9 @@ def pairwise_mode():
                 else:
                     attribute_each_record['vs_code'] = -1
                     attribute_each_record['vs_status'] = 'void'
-                    attribute_each_record['donor_iso'] = 'void'
+                    attribute_each_record['cmp_iso'] = 'void'
+                    attribute_each_record['other_iso'] = 'void'
+                    attribute_each_record['result_iso'] = 'void'
                     for ii in list_attribute_title:
                         value = ''
                         attribute_each_record[ii] = value
@@ -982,10 +1032,15 @@ def pairwise_mode():
                     })
 
         print output_polygon_fullpath + ' is created'
+
+        # create the map
         pic_fullpath = map_generate(output_polygon_fullpath)
+        print 'Map created:' + pic_fullpath
+
+        # set new scheme for point shapefile
         outSchema = {'geometry': 'Point', 'properties': {}}
 
-        # some title has been excluded to be added in the attribute table of voronoi output shapefile
+        # some attribute title has been excluded to be added in the attribute table of voronoi output shapefile
         list_attribute_title = [
             str(aftertime_df.columns[ii])
             for ii in range(len(aftertime_df.columns))

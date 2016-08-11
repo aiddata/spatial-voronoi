@@ -263,6 +263,10 @@ def load_input():
     else:
         raise ValueError('Output picture format is not supported.')
 
+    try:
+        basemap_switch = bool(__basemap_switch)
+    except:
+        raise ImportError('Please check __basemap_switch has been inputted properly under instruction.')
 
 
 
