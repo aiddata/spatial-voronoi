@@ -610,7 +610,7 @@ def main():
     # create a schema for ESRI shapefile
     outSchema = {'geometry': 'Polygon', 'properties': {}}
 
-    # some title has been excluded to be added in the attribute table of voronoi output shapefile
+    # some title has been excluded from being added in the attribute table of voronoi output shapefile
     list_attribute_title = [
         str(clean_df.columns[ii])
         for ii in range(len(clean_df.columns))
